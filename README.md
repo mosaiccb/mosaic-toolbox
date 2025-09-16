@@ -217,6 +217,41 @@ cd frontend
 npm test
 ```
 
+### Adding Test Data
+
+To test the SFTP functionality, you'll need to add sample SFTP configurations to your database:
+
+1. **Execute the test data script:**
+   ```sql
+   -- Run the contents of sql/insert-test-sftp-configurations.sql
+   -- in your SQL Server database
+   ```
+
+2. **Create Key Vault secrets:**
+   - `sftp-test-password` - Password for test SFTP server
+   - `sftp-prod-private-key` - Private key for production SFTP server
+
+3. **Update configuration values:**
+   - Replace placeholder hostnames with actual SFTP servers
+   - Update usernames and secret names as needed
+
+### End-to-End Testing
+
+1. **Start the frontend:**
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+2. **Access the application:**
+   - Open `http://localhost:5173`
+   - Sign in with Microsoft Entra ID
+
+3. **Test SFTP functionality:**
+   - Navigate to SFTP Configuration
+   - Select a configuration from the table
+   - Test file operations (list, upload, download, delete)
+
 ## 📚 API Documentation
 
 ### SFTP Endpoints
