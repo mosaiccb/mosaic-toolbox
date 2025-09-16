@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: mosaic-toolbox-backend
+metadata:
+    template: azd-init@1.18.2
+services:
+    mosaic-toolbox:
+        project: .
+        host: function
+        language: js
+resources:
+    mosaic-toolbox:
+        type: host.function
+        port: 80
+resourceGroup: mosaicrg01
+

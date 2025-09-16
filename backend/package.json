@@ -1,0 +1,64 @@
+{
+  "name": "mosaic-toolbox-backend",
+  "version": "1.0.0",
+  "description": "Mosaic Toolbox Backend with UKG Ready integration, SFTP, and Entra SSO",
+  "main": "lib/app.js",
+  "types": "lib/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/example/ukg-sync-backend.git"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && npm run copy-config",
+    "copy-config": "copy host.json lib\\host.json",
+    "clean": "rimraf lib",
+    "watch": "tsc --watch",
+    "start": "func start",
+    "prestart": "npm run build",
+    "test": "jest --passWithNoTests",
+    "test:db": "node test-db-connection.js",
+    "deploy:schema": "node deploy-schema.js",
+    "migrate:tenants": "node migrate-tenants.js",
+    "lint": "eslint src --ext .ts,.js",
+    "lint:fix": "eslint src --ext .ts,.js --fix",
+    "deploy:prepare": "npm run build && npm prune --production",
+    "deploy:restore": "npm install",
+    "mcp:deployment": "node lib/mcp-servers/deployment-mcp.js",
+    "mcp:build": "npm run build && npm run mcp:deployment",
+    "deploy:smart": "npm run mcp:build"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.0.0",
+    "@azure/identity": "^4.0.0",
+    "@azure/keyvault-secrets": "^4.7.0",
+    "@azure/msal-node": "^3.7.3",
+    "@modelcontextprotocol/sdk": "^1.17.2",
+    "@types/mssql": "^9.1.7",
+    "@types/node": "^20.0.0",
+    "@types/soap": "^0.18.0",
+    "@types/uuid": "^9.0.0",
+    "@types/xml2js": "^0.4.14",
+    "axios": "^1.10.0",
+    "dotenv": "^17.2.0",
+    "mssql": "^11.0.1",
+    "node-cache": "^5.1.2",
+    "redis": "^5.8.2",
+    "soap": "^1.2.1",
+    "ssh2": "^1.17.0",
+    "typescript": "^5.0.0",
+    "uuid": "^9.0.0",
+    "xml2js": "^0.6.2",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/readable-stream": "^4.0.21",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "azure-functions-core-tools": "^4.0.0",
+    "eslint": "^8.0.0",
+    "rimraf": "^6.0.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
