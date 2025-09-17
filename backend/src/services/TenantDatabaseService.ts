@@ -578,6 +578,74 @@ export class TenantDatabaseService {
   }
 
   /**
+   * Store SFTP private key in Key Vault
+   * @param tenantId Tenant ID
+   * @param configId Configuration ID
+   * @param privateKey Private key content
+   * @returns Promise<void>
+   */
+  async storeSftpPrivateKey(tenantId: string, configId: string, privateKey: string): Promise<void> {
+    try {
+      const secretName = `sftp-${configId}-privatekey`;
+      await this.keyVaultClient.setSecret(secretName, privateKey);
+    } catch (error) {
+      console.error(`Error storing SFTP private key for config ${configId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Store SFTP password in Key Vault
+   * @param tenantId Tenant ID
+   * @param configId Configuration ID
+   * @param password Password content
+   * @returns Promise<void>
+   */
+  async storeSftpPassword(tenantId: string, configId: string, password: string): Promise<void> {
+    try {
+      const secretName = `sftp-${configId}-password`;
+      await this.keyVaultClient.setSecret(secretName, password);
+    } catch (error) {
+      console.error(`Error storing SFTP password for config ${configId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get SFTP password from Key Vault
+   * @param tenantId Tenant ID
+   * @param configId Configuration ID
+   * @returns Promise<string | null>
+   */
+  async getSftpPassword(tenantId: string, configId: string): Promise<string | null> {
+    try {
+      const secretName = `sftp-${configId}-password`;
+      const secret = await this.keyVaultClient.getSecret(secretName);
+      return secret.value || null;
+    } catch (error) {
+      console.error(`Error retrieving SFTP password for config ${configId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get SFTP private key from Key Vault
+   * @param tenantId Tenant ID
+   * @param configId Configuration ID
+   * @returns Promise<string | null>
+   */
+  async getSftpPrivateKey(tenantId: string, configId: string): Promise<string | null> {
+    try {
+      const secretName = `sftp-${configId}-privatekey`;
+      const secret = await this.keyVaultClient.getSecret(secretName);
+      return secret.value || null;
+    } catch (error) {
+      console.error(`Error retrieving SFTP private key for config ${configId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Audit tenant changes
    * @param tenantId Tenant ID
    * @param action Action performed

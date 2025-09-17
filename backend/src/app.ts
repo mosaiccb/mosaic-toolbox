@@ -59,6 +59,8 @@ import './functions/tenantEndpoints';
 import './functions/entraAuth';
 import './functions/rkUpload';
 import './functions/sftp';
+import './functions/sftpConfigurations';
+import './functions/passwordsApi';
 // import './functions/parBrinkXmlTest';
 // import './functions/refreshClockedInDashboard';
 // import './functions/simplifiedClockedInDashboard';

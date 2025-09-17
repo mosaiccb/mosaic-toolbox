@@ -13,6 +13,8 @@ export interface SftpConfiguration {
   username: string;
   authMethod: string;
   keyVaultSecretName: string;
+  password?: string; // For password auth method
+  privateKey?: string; // For private key auth method
   remotePath?: string;
   configurationJson?: string;
   isActive: boolean;
@@ -24,6 +26,18 @@ export interface SftpConfiguration {
 
 // Get all SFTP configurations for the authenticated tenant
 export async function getSftpConfigurations(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // For now, we'll use a simple tenant ID from headers - in production this should be from authentication
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -94,6 +108,18 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
 
 // Get a specific SFTP configuration by ID
 export async function getSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
     const configId = parseInt(request.params.id || '0');
@@ -191,13 +217,24 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
 
 // Create a new SFTP configuration
 export async function createSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
     const configData: Partial<SftpConfiguration> = await request.json();
 
     // Validate required fields
-    if (!configData.name || !configData.host || !configData.port || !configData.username ||
-        !configData.authMethod || !configData.keyVaultSecretName) {
+    if (!configData.name || !configData.host || !configData.port || !configData.username || !configData.authMethod) {
       return {
         status: 400,
         headers: {
@@ -206,12 +243,54 @@ export async function createSftpConfiguration(request: HttpRequest, context: Inv
         },
         jsonBody: {
           success: false,
-          error: 'Missing required fields: name, host, port, username, authMethod, keyVaultSecretName'
+          error: 'Missing required fields: name, host, port, username, authMethod'
+        }
+      };
+    }
+
+    // Validate credentials based on auth method
+    if (configData.authMethod === 'password' && !configData.password) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Password is required for password authentication'
+        }
+      };
+    }
+
+    if (configData.authMethod === 'privateKey' && !configData.privateKey) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Private key is required for private key authentication'
         }
       };
     }
 
     context.log('Creating SFTP configuration for tenant:', tenantId);
+
+    // Generate a unique config ID for Key Vault secret naming
+    const configId = `${tenantId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Generate Key Vault secret name based on config ID
+    const keyVaultSecretName = `sftp-${configId}-credentials`;
+
+    // Store credentials in Key Vault based on auth method
+    if (configData.authMethod === 'password' && configData.password) {
+      await dbService.storeSftpPassword(tenantId, configId, configData.password);
+    } else if (configData.authMethod === 'privateKey' && configData.privateKey) {
+      await dbService.storeSftpPrivateKey(tenantId, configId, configData.privateKey);
+    }
 
     const query = `
       INSERT INTO dbo.SftpConfigurations (
@@ -275,6 +354,18 @@ export async function createSftpConfiguration(request: HttpRequest, context: Inv
 
 // Update an existing SFTP configuration
 export async function updateSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
     const configId = parseInt(request.params.id || '0');
@@ -423,6 +514,18 @@ export async function updateSftpConfiguration(request: HttpRequest, context: Inv
 
 // Delete (soft delete) an SFTP configuration
 export async function deleteSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
     const configId = parseInt(request.params.id || '0');
@@ -505,7 +608,7 @@ export async function deleteSftpConfiguration(request: HttpRequest, context: Inv
 app.http('getSftpConfigurations', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
-  route: 'sftp/configurations',
+  route: 'sftp/configurations/list',
   handler: getSftpConfigurations
 });
 

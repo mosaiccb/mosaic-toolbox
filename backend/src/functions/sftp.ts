@@ -16,6 +16,18 @@ const dbService = new TenantDatabaseService();
 
 // List files in SFTP directory
 export async function listSftpFiles(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // Get tenant ID from headers
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -110,6 +122,18 @@ export async function listSftpFiles(request: HttpRequest, context: InvocationCon
 
 // Upload file to SFTP
 export async function uploadSftpFile(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // Get tenant ID from headers
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -202,6 +226,18 @@ export async function uploadSftpFile(request: HttpRequest, context: InvocationCo
 
 // Download file from SFTP
 export async function downloadSftpFile(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // Get tenant ID from headers
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -296,6 +332,18 @@ export async function downloadSftpFile(request: HttpRequest, context: Invocation
 
 // Delete file from SFTP
 export async function deleteSftpFile(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // Get tenant ID from headers
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -384,6 +432,18 @@ export async function deleteSftpFile(request: HttpRequest, context: InvocationCo
 
 // Create directory on SFTP
 export async function createSftpDirectory(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // Get tenant ID from headers
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -472,6 +532,18 @@ export async function createSftpDirectory(request: HttpRequest, context: Invocat
 
 // Get file info from SFTP
 export async function getSftpFileInfo(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
   try {
     // Get tenant ID from headers
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
@@ -572,42 +644,42 @@ export async function getSftpFileInfo(request: HttpRequest, context: InvocationC
 }
 
 app.http('sftp-list', {
-  methods: ['GET'],
+  methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'sftp/list',
   handler: listSftpFiles,
 });
 
 app.http('sftp-upload', {
-  methods: ['POST'],
+  methods: ['POST', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'sftp/upload',
   handler: uploadSftpFile,
 });
 
 app.http('sftp-download', {
-  methods: ['GET'],
+  methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'sftp/download',
   handler: downloadSftpFile,
 });
 
 app.http('sftp-delete', {
-  methods: ['DELETE'],
+  methods: ['DELETE', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'sftp/delete',
   handler: deleteSftpFile,
 });
 
 app.http('sftp-mkdir', {
-  methods: ['POST'],
+  methods: ['POST', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'sftp/mkdir',
   handler: createSftpDirectory,
 });
 
 app.http('sftp-info', {
-  methods: ['GET'],
+  methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'sftp/info',
   handler: getSftpFileInfo,
