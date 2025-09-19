@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSftpConfigurationsApi, type SftpConfiguration, type CreateSftpConfigurationRequest, type UpdateSftpConfigurationRequest } from '../../api/sftpConfigurationsApi';
+import { usePgpKeysApi, type PgpKey } from '../../api/pgpService';
 
 interface SftpConfigurationFormProps {
   configuration?: SftpConfiguration | null;
@@ -13,6 +14,7 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
   onCancel,
 }) => {
   const { createSftpConfiguration, updateSftpConfiguration } = useSftpConfigurationsApi();
+  const { listPgpKeys } = usePgpKeysApi();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -20,14 +22,38 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
     host: '',
     port: 22,
     username: '',
-    authMethod: 'key',
-    keyVaultSecretName: '',
+    authMethod: 'password', // Default to password for better UX
+    password: '', // For password auth
+    privateKeyFile: null as File | null, // For key auth
     remotePath: '',
     configurationJson: '',
     isActive: true,
+    // PGP Encryption Support
+    enablePgpEncryption: false,
+    pgpKeyId: '' as string, // Use string for select dropdown, convert to number when submitting
   });
 
+  const [pgpKeys, setPgpKeys] = useState<PgpKey[]>([]);
+  const [loadingPgpKeys, setLoadingPgpKeys] = useState(false);
+
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  // Load PGP keys when component mounts
+  useEffect(() => {
+    const loadPgpKeys = async () => {
+      setLoadingPgpKeys(true);
+      try {
+        const keys = await listPgpKeys();
+        setPgpKeys(keys);
+      } catch (err) {
+        console.error('Failed to load PGP keys:', err);
+      } finally {
+        setLoadingPgpKeys(false);
+      }
+    };
+
+    loadPgpKeys();
+  }, [listPgpKeys]);
 
   useEffect(() => {
     if (configuration) {
@@ -36,11 +62,14 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
         host: configuration.host || '',
         port: configuration.port || 22,
         username: configuration.username || '',
-        authMethod: configuration.authMethod || 'key',
-        keyVaultSecretName: configuration.keyVaultSecretName || '',
+        authMethod: configuration.authMethod || 'password',
+        password: '', // Don't populate password for security
+        privateKeyFile: null, // Don't populate file
         remotePath: configuration.remotePath || '',
         configurationJson: configuration.configurationJson || '',
         isActive: configuration.isActive ?? true,
+        enablePgpEncryption: configuration.enablePgpEncryption || false,
+        pgpKeyId: configuration.pgpKeyId ? configuration.pgpKeyId.toString() : '',
       });
     } else {
       // Reset form for new configuration
@@ -49,11 +78,14 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
         host: '',
         port: 22,
         username: '',
-        authMethod: 'key',
-        keyVaultSecretName: '',
+        authMethod: 'password',
+        password: '',
+        privateKeyFile: null,
         remotePath: '',
         configurationJson: '',
         isActive: true,
+        enablePgpEncryption: false,
+        pgpKeyId: '',
       });
     }
     setValidationErrors({});
@@ -81,12 +113,22 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
       errors.username = 'Username is required';
     }
 
-    if (!formData.keyVaultSecretName.trim()) {
-      errors.keyVaultSecretName = 'Key Vault secret name is required';
+    if (!['password', 'privateKey'].includes(formData.authMethod)) {
+      errors.authMethod = 'Please select a valid authentication method';
     }
 
-    if (!['password', 'key'].includes(formData.authMethod)) {
-      errors.authMethod = 'Please select a valid authentication method';
+    // Validate based on auth method
+    if (formData.authMethod === 'password' && !formData.password.trim()) {
+      errors.password = 'Password is required for password authentication';
+    }
+
+    if (formData.authMethod === 'privateKey' && !formData.privateKeyFile) {
+      errors.privateKeyFile = 'Private key file is required for private key authentication';
+    }
+
+    // Validate PGP encryption settings
+    if (formData.enablePgpEncryption && !formData.pgpKeyId) {
+      errors.pgpKeyId = 'Please select a PGP key when encryption is enabled';
     }
 
     setValidationErrors(errors);
@@ -108,6 +150,24 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setFormData(prev => ({
+        ...prev,
+        privateKeyFile: file
+      }));
+
+      // Clear validation error for this field
+      if (validationErrors.privateKeyFile) {
+        setValidationErrors(prev => ({
+          ...prev,
+          privateKeyFile: ''
+        }));
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -119,35 +179,51 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
     setError(null);
 
     try {
+      // Prepare the request data
+      let requestData: CreateSftpConfigurationRequest | UpdateSftpConfigurationRequest;
+
       if (configuration) {
         // Update existing configuration
-        const updateData: UpdateSftpConfigurationRequest = {
+        requestData = {
           name: formData.name,
           host: formData.host,
           port: formData.port,
           username: formData.username,
           authMethod: formData.authMethod,
-          keyVaultSecretName: formData.keyVaultSecretName,
           remotePath: formData.remotePath || undefined,
           configurationJson: formData.configurationJson || undefined,
           isActive: formData.isActive,
+          enablePgpEncryption: formData.enablePgpEncryption,
+          pgpKeyId: formData.enablePgpEncryption && formData.pgpKeyId ? parseInt(formData.pgpKeyId) : undefined,
         };
-
-        await updateSftpConfiguration(configuration.id!, updateData);
       } else {
         // Create new configuration
-        const createData: CreateSftpConfigurationRequest = {
+        requestData = {
           name: formData.name,
           host: formData.host,
           port: formData.port,
           username: formData.username,
           authMethod: formData.authMethod,
-          keyVaultSecretName: formData.keyVaultSecretName,
           remotePath: formData.remotePath || undefined,
           configurationJson: formData.configurationJson || undefined,
+          enablePgpEncryption: formData.enablePgpEncryption,
+          pgpKeyId: formData.enablePgpEncryption && formData.pgpKeyId ? parseInt(formData.pgpKeyId) : undefined,
         };
 
-        await createSftpConfiguration(createData);
+        // Add credentials based on auth method
+        if (formData.authMethod === 'password') {
+          (requestData as CreateSftpConfigurationRequest).password = formData.password;
+        } else if (formData.authMethod === 'privateKey' && formData.privateKeyFile) {
+          // Read the private key file content
+          const privateKeyContent = await formData.privateKeyFile.text();
+          (requestData as CreateSftpConfigurationRequest).privateKey = privateKeyContent;
+        }
+      }
+
+      if (configuration) {
+        await updateSftpConfiguration(configuration.id!, requestData as UpdateSftpConfigurationRequest);
+      } else {
+        await createSftpConfiguration(requestData as CreateSftpConfigurationRequest);
       }
 
       onSave();
@@ -292,8 +368,8 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
                     validationErrors.authMethod ? 'border-red-300' : ''
                   }`}
                 >
-                  <option value="key">SSH Key</option>
                   <option value="password">Password</option>
+                  <option value="privateKey">Private Key</option>
                 </select>
                 {validationErrors.authMethod && (
                   <p className="mt-1 text-sm text-red-600">{validationErrors.authMethod}</p>
@@ -301,31 +377,60 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
               </div>
             </div>
 
-            {/* Key Vault Secret Name */}
-            <div className="sm:col-span-6">
-              <label htmlFor="keyVaultSecretName" className="block text-sm font-medium text-gray-700">
-                Key Vault Secret Name *
-              </label>
-              <div className="mt-1">
-                <input
-                  type="text"
-                  name="keyVaultSecretName"
-                  id="keyVaultSecretName"
-                  value={formData.keyVaultSecretName}
-                  onChange={(e) => handleInputChange('keyVaultSecretName', e.target.value)}
-                  className={`shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md ${
-                    validationErrors.keyVaultSecretName ? 'border-red-300' : ''
-                  }`}
-                  placeholder="e.g., sftp-private-key or sftp-password"
-                />
-                <p className="mt-1 text-sm text-gray-500">
-                  The name of the secret in Azure Key Vault containing the SSH private key or password
-                </p>
-                {validationErrors.keyVaultSecretName && (
-                  <p className="mt-1 text-sm text-red-600">{validationErrors.keyVaultSecretName}</p>
-                )}
+            {/* Password Field - Only show for password auth */}
+            {formData.authMethod === 'password' && (
+              <div className="sm:col-span-6">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  Password *
+                </label>
+                <div className="mt-1">
+                  <input
+                    type="password"
+                    name="password"
+                    id="password"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    className={`shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md ${
+                      validationErrors.password ? 'border-red-300' : ''
+                    }`}
+                    placeholder="Enter SFTP password"
+                  />
+                  <p className="mt-1 text-sm text-gray-500">
+                    Password will be securely stored in Azure Key Vault
+                  </p>
+                  {validationErrors.password && (
+                    <p className="mt-1 text-sm text-red-600">{validationErrors.password}</p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Private Key File Field - Only show for private key auth */}
+            {formData.authMethod === 'privateKey' && (
+              <div className="sm:col-span-6">
+                <label htmlFor="privateKeyFile" className="block text-sm font-medium text-gray-700">
+                  Private Key File *
+                </label>
+                <div className="mt-1">
+                  <input
+                    type="file"
+                    name="privateKeyFile"
+                    id="privateKeyFile"
+                    accept=".pem,.key,.ppk"
+                    onChange={(e) => handleFileChange(e)}
+                    className={`shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md ${
+                      validationErrors.privateKeyFile ? 'border-red-300' : ''
+                    }`}
+                  />
+                  <p className="mt-1 text-sm text-gray-500">
+                    Upload your SSH private key file (.pem, .key, or .ppk). Will be securely stored in Azure Key Vault.
+                  </p>
+                  {validationErrors.privateKeyFile && (
+                    <p className="mt-1 text-sm text-red-600">{validationErrors.privateKeyFile}</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Remote Path */}
             <div className="sm:col-span-6">
@@ -345,6 +450,77 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
                 <p className="mt-1 text-sm text-gray-500">
                   Optional default directory to navigate to when connecting (leave empty for root)
                 </p>
+              </div>
+            </div>
+
+            {/* PGP Encryption Section */}
+            <div className="sm:col-span-6">
+              <div className="border-t border-gray-200 pt-6 mt-6">
+                <h4 className="text-base font-medium text-gray-900 mb-4">🔒 PGP Encryption (Optional)</h4>
+                
+                {/* Enable PGP Encryption */}
+                <div className="flex items-center mb-4">
+                  <input
+                    id="enablePgpEncryption"
+                    name="enablePgpEncryption"
+                    type="checkbox"
+                    checked={formData.enablePgpEncryption}
+                    onChange={(e) => handleInputChange('enablePgpEncryption', e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="enablePgpEncryption" className="ml-2 block text-sm text-gray-900">
+                    Enable PGP encryption for uploaded files
+                  </label>
+                </div>
+
+                {/* PGP Key Selection */}
+                {formData.enablePgpEncryption && (
+                  <div className="mt-4">
+                    <label htmlFor="pgpKeyId" className="block text-sm font-medium text-gray-700">
+                      PGP Public Key *
+                    </label>
+                    <div className="mt-1">
+                      <select
+                        name="pgpKeyId"
+                        id="pgpKeyId"
+                        value={formData.pgpKeyId}
+                        onChange={(e) => handleInputChange('pgpKeyId', e.target.value)}
+                        disabled={loadingPgpKeys}
+                        className={`shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md ${
+                          validationErrors.pgpKeyId ? 'border-red-300' : ''
+                        }`}
+                      >
+                        <option value="">
+                          {loadingPgpKeys ? 'Loading PGP keys...' : 'Select a PGP key'}
+                        </option>
+                        {pgpKeys.map(key => (
+                          <option key={key.id} value={key.id?.toString() || ''}>
+                            {key.name} {key.description ? `(${key.description})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {loadingPgpKeys && (
+                        <p className="mt-1 text-sm text-gray-500">Loading available PGP keys...</p>
+                      )}
+                      {!loadingPgpKeys && pgpKeys.length === 0 && (
+                        <p className="mt-1 text-sm text-yellow-600">
+                          No PGP keys available. You can create one in the PGP Keys section.
+                        </p>
+                      )}
+                      {validationErrors.pgpKeyId && (
+                        <p className="mt-1 text-sm text-red-600">{validationErrors.pgpKeyId}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {formData.enablePgpEncryption && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <p className="text-sm text-blue-700">
+                      📋 When PGP encryption is enabled, all files uploaded via this SFTP configuration will be automatically encrypted using the selected PGP public key before being transferred.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -405,7 +581,23 @@ const SftpConfigurationForm: React.FC<SftpConfigurationFormProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              style={{
+                backgroundColor: loading ? '#94a3b8' : '#3b82f6',
+                borderColor: loading ? '#94a3b8' : '#3b82f6'
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.backgroundColor = '#2563eb';
+                  e.currentTarget.style.borderColor = '#2563eb';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.backgroundColor = '#3b82f6';
+                  e.currentTarget.style.borderColor = '#3b82f6';
+                }
+              }}
             >
               {loading ? (
                 <>

@@ -48,6 +48,14 @@ resource functionApp 'Microsoft.Web/sites@2022-03-01' = {
           name: 'WEBSITE_NODE_DEFAULT_VERSION'
           value: '~20'
         }
+        {
+          name: 'KEY_VAULT_NAME'
+          value: 'mosaic-toolbox-kv'
+        }
+        {
+          name: 'AZURE_KEY_VAULT_ENDPOINT'
+          value: 'https://mosaic-toolbox-kv.vault.azure.net/'
+        }
       ]
     }
   }
@@ -84,28 +92,10 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   tags: tags
 }
 
-// Create a keyvault to store secrets
-module keyVault 'br/public:avm/res/key-vault/vault:0.12.0' = {
-  name: 'keyvault'
-  params: {
-    name: '${abbrs.keyVaultVaults}${resourceToken}'
-    location: location
-    tags: tags
-    enableRbacAuthorization: false
-    accessPolicies: [
-      {
-        objectId: principalId
-        permissions: {
-          secrets: [ 'get', 'list', 'set' ]
-        }
-      }
-    ]
-    secrets: [
-    ]
-  }
-}
+// Using existing Key Vault: kv-s4eh2pl2z7ipa
+// Key Vault creation commented out - using existing vault
 
-output AZURE_KEY_VAULT_ENDPOINT string = keyVault.outputs.uri
-output AZURE_KEY_VAULT_NAME string = keyVault.outputs.name
-output AZURE_RESOURCE_VAULT_ID string = keyVault.outputs.resourceId
+output AZURE_KEY_VAULT_ENDPOINT string = 'https://mosaic-toolbox-kv.vault.azure.net/'
+output AZURE_KEY_VAULT_NAME string = 'mosaic-toolbox-kv'
+output AZURE_RESOURCE_VAULT_ID string = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroup().name}/providers/Microsoft.KeyVault/vaults/mosaic-toolbox-kv'
 output AZURE_FUNCTION_APP_NAME string = functionApp.name

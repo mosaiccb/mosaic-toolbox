@@ -1,10 +1,44 @@
 -- Test Data for SFTP Configurations
 -- This script inserts sample SFTP configurations for testing the Mosaic Toolbox
 
+-- First, ensure we have a test tenant
+-- Check if the default tenant exists, if not, create it
+IF NOT EXISTS (SELECT 1 FROM dbo.UKGTenants WHERE Id = '00000000-0000-0000-0000-000000000000')
+BEGIN
+    INSERT INTO dbo.UKGTenants (
+        Id,
+        TenantName,
+        CompanyId,
+        BaseUrl,
+        IsActive,
+        CreatedBy,
+        CreatedDate,
+        ModifiedBy,
+        ModifiedDate,
+        Description
+    ) VALUES (
+        '00000000-0000-0000-0000-000000000000',  -- Default test tenant ID
+        'Test Tenant',
+        'TEST001',
+        'https://test.ukg.com',
+        1,  -- IsActive
+        'system',
+        GETUTCDATE(),
+        'system',
+        GETUTCDATE(),
+        'Default test tenant for Mosaic Toolbox development'
+    );
+    PRINT 'Test tenant created successfully!';
+END
+ELSE
+BEGIN
+    PRINT 'Test tenant already exists.';
+END
+
 -- Insert a test SFTP configuration
 -- Note: Replace the KeyVaultSecretName with an actual secret name in your Key Vault
+-- TenantId will be auto-generated using NEWID()
 INSERT INTO dbo.SftpConfigurations (
-    TenantId,
     Name,
     Host,
     Port,
@@ -19,7 +53,6 @@ INSERT INTO dbo.SftpConfigurations (
     CreatedBy,
     UpdatedBy
 ) VALUES (
-    '00000000-0000-0000-0000-000000000000',  -- Default tenant ID
     'Test SFTP Server',
     'demo.sftp.server.com',  -- Replace with actual SFTP server
     22,  -- Standard SFTP port
@@ -36,8 +69,8 @@ INSERT INTO dbo.SftpConfigurations (
 );
 
 -- Insert a second test configuration for variety
+-- TenantId will be auto-generated using NEWID()
 INSERT INTO dbo.SftpConfigurations (
-    TenantId,
     Name,
     Host,
     Port,
@@ -52,7 +85,6 @@ INSERT INTO dbo.SftpConfigurations (
     CreatedBy,
     UpdatedBy
 ) VALUES (
-    '00000000-0000-0000-0000-000000000000',  -- Default tenant ID
     'Production SFTP Server',
     'prod.sftp.company.com',  -- Replace with actual production server
     22,
@@ -70,18 +102,20 @@ INSERT INTO dbo.SftpConfigurations (
 
 -- Verify the insertions
 SELECT
-    Id,
-    Name,
-    Host,
-    Port,
-    Username,
-    AuthMethod,
-    RemotePath,
-    IsActive,
-    CreatedAt
-FROM dbo.SftpConfigurations
-WHERE TenantId = '00000000-0000-0000-0000-000000000000'
-ORDER BY CreatedAt DESC;
+    sc.Id,
+    sc.Name,
+    sc.Host,
+    sc.Port,
+    sc.Username,
+    sc.AuthMethod,
+    sc.RemotePath,
+    sc.IsActive,
+    sc.CreatedAt,
+    t.TenantName
+FROM dbo.SftpConfigurations sc
+JOIN dbo.UKGTenants t ON sc.TenantId = t.Id
+WHERE sc.TenantId = '00000000-0000-0000-0000-000000000000'
+ORDER BY sc.CreatedAt DESC;
 
 PRINT 'SFTP test configurations inserted successfully!';
 PRINT 'Remember to create the corresponding secrets in Azure Key Vault:';

@@ -106,7 +106,24 @@ export async function createPassword(request: HttpRequest, context: InvocationCo
     context.log('Creating new password entry');
     
     try {
-        const requestData = await request.json() as CreatePasswordRequest;
+        // Log the raw request body for debugging
+        const rawBody = await request.text();
+        context.log('Raw request body:', rawBody);
+        
+        let requestData: CreatePasswordRequest;
+        try {
+            requestData = JSON.parse(rawBody) as CreatePasswordRequest;
+        } catch (parseError) {
+            context.log('JSON parsing error:', parseError);
+            return {
+                status: 400,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                jsonBody: { error: 'Invalid JSON format in request body' }
+            };
+        }
         
         if (!requestData.title || !requestData.password) {
             return {
@@ -267,18 +284,6 @@ export async function deletePassword(request: HttpRequest, context: InvocationCo
     }
 }
 
-// Handle OPTIONS requests for CORS
-export async function passwordsOptions(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
-    return {
-        status: 200,
-        headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-        }
-    };
-}
-
 // Register the HTTP functions
 app.http('getPasswords', {
     methods: ['GET'],
@@ -313,19 +318,4 @@ app.http('deletePassword', {
     route: 'passwords/{id}',
     authLevel: 'anonymous',
     handler: deletePassword
-});
-
-app.http('passwordsOptions', {
-    methods: ['OPTIONS'],
-    route: 'passwords/{*route}',
-    authLevel: 'anonymous',
-    handler: passwordsOptions
-});
-
-// Additional OPTIONS route for the base passwords endpoint
-app.http('passwordsOptionsBase', {
-    methods: ['OPTIONS'],
-    route: 'passwords',
-    authLevel: 'anonymous',
-    handler: passwordsOptions
 });

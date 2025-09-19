@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "staticWebAppName": {
+      "type": "string",
+      "defaultValue": "mosaic-dashboard-sso"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "East US 2"
+    },
+    "repositoryUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "GitHub repository URL"
+      }
+    },
+    "branch": {
+      "type": "string",
+      "defaultValue": "main"
+    },
+    "azureClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure AD App Registration Client ID"
+      }
+    },
+    "azureClientSecret": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Azure AD App Registration Client Secret"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/staticSites",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('staticWebAppName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Standard"
+      },
+      "properties": {
+        "repositoryUrl": "[parameters('repositoryUrl')]",
+        "branch": "[parameters('branch')]",
+        "buildProperties": {
+          "appLocation": "/",
+          "outputLocation": "dist",
+          "appBuildCommand": "npm run build"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/staticSites/config",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('staticWebAppName'), '/appsettings')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/staticSites', parameters('staticWebAppName'))]"
+      ],
+      "properties": {
+        "AZURE_CLIENT_ID": "[parameters('azureClientId')]",
+        "AZURE_CLIENT_SECRET": "[parameters('azureClientSecret')]"
+      }
+    }
+  ],
+  "outputs": {
+    "staticWebAppDefaultHostname": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/staticSites', parameters('staticWebAppName'))).defaultHostname]"
+    }
+  }
+}

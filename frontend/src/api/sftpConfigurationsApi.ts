@@ -1,4 +1,5 @@
-import { useAuth } from '../contexts/AuthContext';
+import { useCallback } from 'react';
+import { useAuthToken } from '../hooks/useAuthToken';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://mosaic-toolbox.azurewebsites.net/api';
 
@@ -18,6 +19,10 @@ export interface SftpConfiguration {
   updatedAt?: string;
   createdBy?: string;
   updatedBy?: string;
+  // PGP Encryption Support
+  pgpKeyId?: number;
+  enablePgpEncryption?: boolean;
+  pgpKeyName?: string; // Friendly name for display
 }
 
 export interface CreateSftpConfigurationRequest {
@@ -26,9 +31,13 @@ export interface CreateSftpConfigurationRequest {
   port: number;
   username: string;
   authMethod: string;
-  keyVaultSecretName: string;
+  password?: string; // For password authentication
+  privateKey?: string; // For private key authentication
   remotePath?: string;
   configurationJson?: string;
+  // PGP Encryption Support
+  pgpKeyId?: number;
+  enablePgpEncryption?: boolean;
 }
 
 export interface UpdateSftpConfigurationRequest {
@@ -41,26 +50,33 @@ export interface UpdateSftpConfigurationRequest {
   remotePath?: string;
   configurationJson?: string;
   isActive?: boolean;
+  // PGP Encryption Support
+  pgpKeyId?: number;
+  enablePgpEncryption?: boolean;
 }
 
 // Custom hook for SFTP configuration API operations
 export const useSftpConfigurationsApi = () => {
-  const { getToken } = useAuth();
+  const { getToken } = useAuthToken();
 
-  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken();
+
+    if (!token) {
+      throw new Error('Authentication required');
+    }
 
     return {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
-      'x-tenant-id': '00000000-0000-0000-0000-000000000000', // TODO: Get from tenant context
+      'x-tenant-id': '00000000-0000-0000-0000-000000000000', // Default tenant ID for testing
     };
-  };
+  }, [getToken]);
 
-  const getSftpConfigurations = async (): Promise<SftpConfiguration[]> => {
+  const getSftpConfigurations = useCallback(async (): Promise<SftpConfiguration[]> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE_URL}/sftp/configurations`, {
+      const response = await fetch(`${API_BASE_URL}/sftp/configurations/list`, {
         method: 'GET',
         headers,
       });
@@ -75,12 +91,12 @@ export const useSftpConfigurationsApi = () => {
       console.error('Error getting SFTP configurations:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const getSftpConfiguration = async (id: number): Promise<SftpConfiguration> => {
+  const getSftpConfiguration = useCallback(async (id: number): Promise<SftpConfiguration> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE_URL}/sftp/configurations/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/sftp/configurations/get/${id}`, {
         method: 'GET',
         headers,
       });
@@ -95,9 +111,9 @@ export const useSftpConfigurationsApi = () => {
       console.error('Error getting SFTP configuration:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const createSftpConfiguration = async (config: CreateSftpConfigurationRequest): Promise<SftpConfiguration> => {
+  const createSftpConfiguration = useCallback(async (config: CreateSftpConfigurationRequest): Promise<SftpConfiguration> => {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${API_BASE_URL}/sftp/configurations`, {
@@ -116,12 +132,12 @@ export const useSftpConfigurationsApi = () => {
       console.error('Error creating SFTP configuration:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const updateSftpConfiguration = async (id: number, config: UpdateSftpConfigurationRequest): Promise<void> => {
+  const updateSftpConfiguration = useCallback(async (id: number, config: UpdateSftpConfigurationRequest): Promise<void> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE_URL}/sftp/configurations/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/sftp/configurations/update/${id}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(config),
@@ -134,12 +150,12 @@ export const useSftpConfigurationsApi = () => {
       console.error('Error updating SFTP configuration:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const deleteSftpConfiguration = async (id: number): Promise<void> => {
+  const deleteSftpConfiguration = useCallback(async (id: number): Promise<void> => {
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${API_BASE_URL}/sftp/configurations/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/sftp/configurations/delete/${id}`, {
         method: 'DELETE',
         headers,
       });
@@ -151,7 +167,7 @@ export const useSftpConfigurationsApi = () => {
       console.error('Error deleting SFTP configuration:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
   return {
     getSftpConfigurations,

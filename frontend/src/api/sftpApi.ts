@@ -1,4 +1,5 @@
-import { useAuth } from '../contexts/AuthContext';
+import { useCallback } from 'react';
+import { useAuthToken } from '../hooks/useAuthToken';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://mosaic-toolbox.azurewebsites.net/api';
 
@@ -21,18 +22,19 @@ export interface SftpConnection {
 
 // Custom hook for SFTP API operations
 export const useSftpApi = () => {
-  const { getToken } = useAuth();
+  const { getToken } = useAuthToken();
 
-  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     const token = await getToken();
 
     return {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'x-tenant-id': '00000000-0000-0000-0000-000000000000', // Default tenant ID for testing
     };
-  };
+  }, [getToken]);
 
-  const listFiles = async (path: string = '/', configId: number): Promise<SftpFile[]> => {
+  const listFiles = useCallback(async (path: string = '/', configId: number): Promise<SftpFile[]> => {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(`${API_BASE_URL}/sftp/list?path=${encodeURIComponent(path)}&configId=${configId}`, {
@@ -50,9 +52,9 @@ export const useSftpApi = () => {
       console.error('Error listing SFTP files:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const uploadFile = async (file: File, remotePath: string, configId: number): Promise<void> => {
+  const uploadFile = useCallback(async (file: File, remotePath: string, configId: number): Promise<void> => {
     try {
       const headers = await getAuthHeaders();
       // Remove Content-Type header for FormData
@@ -79,9 +81,9 @@ export const useSftpApi = () => {
       console.error('Error uploading file:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const downloadFile = async (remotePath: string, configId: number): Promise<Blob> => {
+  const downloadFile = useCallback(async (remotePath: string, configId: number): Promise<Blob> => {
     try {
       const headers = await getAuthHeaders();
 
@@ -99,9 +101,9 @@ export const useSftpApi = () => {
       console.error('Error downloading file:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const deleteFile = async (remotePath: string, configId: number): Promise<void> => {
+  const deleteFile = useCallback(async (remotePath: string, configId: number): Promise<void> => {
     try {
       const headers = await getAuthHeaders();
 
@@ -121,9 +123,9 @@ export const useSftpApi = () => {
       console.error('Error deleting file:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const createDirectory = async (remotePath: string, configId: number): Promise<void> => {
+  const createDirectory = useCallback(async (remotePath: string, configId: number): Promise<void> => {
     try {
       const headers = await getAuthHeaders();
 
@@ -140,9 +142,9 @@ export const useSftpApi = () => {
       console.error('Error creating directory:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
-  const getFileInfo = async (remotePath: string, configId: number): Promise<SftpFile> => {
+  const getFileInfo = useCallback(async (remotePath: string, configId: number): Promise<SftpFile> => {
     try {
       const headers = await getAuthHeaders();
 
@@ -160,7 +162,7 @@ export const useSftpApi = () => {
       console.error('Error getting file info:', error);
       throw error;
     }
-  };
+  }, [getAuthHeaders]);
 
   return {
     listFiles,

@@ -4,14 +4,14 @@ import { LogLevel } from '@azure/msal-browser';
 // MSAL configuration for Microsoft Entra ID
 export const msalConfig: Configuration = {
   auth: {
-    clientId: import.meta.env.VITE_AZURE_CLIENT_ID || '4663051e-32cf-49ed-9759-2ef91bbe9d73',
-    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'common'}`,
-    redirectUri: import.meta.env.VITE_REDIRECT_URI || window.location.origin,
-    postLogoutRedirectUri: import.meta.env.VITE_POST_LOGOUT_REDIRECT_URI || window.location.origin,
+    clientId: import.meta.env.VITE_AZURE_CLIENT_ID || '0c745f9c-2645-47aa-9fa7-929237a0313d',
+    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || 'a06810f5-b832-45e2-a50f-945ed8fae797'}`,
+    redirectUri: import.meta.env.VITE_REDIRECT_URI || 'https://nice-moss-0c8cc2510.2.azurestaticapps.net',
+    postLogoutRedirectUri: import.meta.env.VITE_POST_LOGOUT_REDIRECT_URI || 'https://nice-moss-0c8cc2510.2.azurestaticapps.net',
   },
   cache: {
     cacheLocation: 'localStorage',
-    storeAuthStateInCookie: false,
+    storeAuthStateInCookie: true, // Enable cookie storage for better compatibility
   },
   system: {
     loggerOptions: {

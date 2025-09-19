@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MSAL Debug Test</title>
+</head>
+<body>
+    <h1>MSAL Configuration Debug</h1>
+    
+    <div id="config-info">
+        <h2>Configuration:</h2>
+        <p><strong>Client ID:</strong> <span id="client-id">Loading...</span></p>
+        <p><strong>Tenant ID:</strong> <span id="tenant-id">Loading...</span></p>
+        <p><strong>Authority:</strong> <span id="authority">Loading...</span></p>
+        <p><strong>Redirect URI:</strong> <span id="redirect-uri">Loading...</span></p>
+    </div>
+    
+    <div id="test-info">
+        <h2>Environment:</h2>
+        <p><strong>Current URL:</strong> <span id="current-url"></span></p>
+        <p><strong>Origin:</strong> <span id="origin"></span></p>
+    </div>
+    
+    <script>
+        // Display current environment
+        document.getElementById('current-url').textContent = window.location.href;
+        document.getElementById('origin').textContent = window.location.origin;
+        
+        // Try to access environment variables (won't work in production but useful for debugging)
+        document.getElementById('client-id').textContent = '0c745f9c-2645-47aa-9fa7-929237a0313d';
+        document.getElementById('tenant-id').textContent = 'a06810f5-b832-45e2-a50f-945ed8fae797';
+        document.getElementById('authority').textContent = 'https://login.microsoftonline.com/a06810f5-b832-45e2-a50f-945ed8fae797';
+        document.getElementById('redirect-uri').textContent = window.location.origin;
+    </script>
+</body>
+</html>

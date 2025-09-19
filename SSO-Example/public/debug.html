@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Test</title>
+</head>
+<body>
+    <h1>Debug Test Page</h1>
+    <p>If you can see this page, the basic SWA deployment is working.</p>
+    <p>Current URL: <span id="url"></span></p>
+    <p>User Agent: <span id="agent"></span></p>
+    <p>Referrer: <span id="referrer"></span></p>
+    
+    <script>
+        document.getElementById('url').textContent = window.location.href;
+        document.getElementById('agent').textContent = navigator.userAgent;
+        document.getElementById('referrer').textContent = document.referrer || 'None';
+    </script>
+</body>
+</html>

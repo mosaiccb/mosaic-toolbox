@@ -1,8 +1,10 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { TenantDatabaseService } from '../services/TenantDatabaseService';
+import { SftpService } from '../services/SftpService';
 
-// Initialize the database service
+// Initialize the database service and SFTP service
 const dbService = new TenantDatabaseService();
+const sftpService = new SftpService();
 
 export interface SftpConfiguration {
   id?: number;
@@ -22,6 +24,10 @@ export interface SftpConfiguration {
   updatedAt?: Date;
   createdBy?: string;
   updatedBy?: string;
+  // PGP Encryption Support
+  pgpKeyId?: number; // ID reference to PgpKeys table
+  enablePgpEncryption?: boolean;
+  pgpKeyName?: string; // Friendly name for display (derived from PgpKeys table)
 }
 
 // Get all SFTP configurations for the authenticated tenant
@@ -44,13 +50,15 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
 
     context.log('Getting SFTP configurations for tenant:', tenantId);
 
-    // Use a simple query to get SFTP configurations
+    // Use a query to get SFTP configurations with PGP key information
     const query = `
-      SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
-             RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
-      FROM dbo.SftpConfigurations
-      WHERE TenantId = @tenantId AND IsActive = 1
-      ORDER BY Name
+      SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
+             s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
+             s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+      FROM dbo.SftpConfigurations s
+      LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
+      WHERE s.TenantId = @tenantId AND s.IsActive = 1
+      ORDER BY s.Name
     `;
 
     const configurations = await dbService.executeQueryWithParams(query, [
@@ -72,7 +80,10 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
       createdAt: row.CreatedAt,
       updatedAt: row.UpdatedAt,
       createdBy: row.CreatedBy,
-      updatedBy: row.UpdatedBy
+      updatedBy: row.UpdatedBy,
+      pgpKeyId: row.PgpKeyId,
+      enablePgpEncryption: row.EnablePgpEncryption,
+      pgpKeyName: row.PgpKeyName
     }));
 
     return {
@@ -108,8 +119,11 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
 
 // Get a specific SFTP configuration by ID
 export async function getSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  context.log(`getSftpConfiguration function called with method: ${request.method}, URL: ${request.url}`);
+  
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
+    context.log('Handling OPTIONS request for getSftpConfiguration');
     return {
       status: 200,
       headers: {
@@ -140,6 +154,35 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
 
     context.log(`Getting SFTP configuration ${configId} for tenant:`, tenantId);
 
+    // First, check if the configuration exists at all (for debugging)
+    const existsQuery = `
+      SELECT Id, TenantId, IsActive 
+      FROM dbo.SftpConfigurations 
+      WHERE Id = @configId
+    `;
+    
+    const existsResult = await dbService.executeQueryWithParams(existsQuery, [
+      { name: 'configId', type: 'int', value: configId }
+    ]);
+    
+    if (existsResult.length === 0) {
+      context.log(`SFTP configuration ${configId} does not exist in database`);
+      return {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: `SFTP configuration with ID ${configId} does not exist`
+        }
+      };
+    }
+    
+    const existingConfig = existsResult[0];
+    context.log(`SFTP configuration ${configId} exists with TenantId: ${existingConfig.TenantId}, IsActive: ${existingConfig.IsActive}, Requested TenantId: ${tenantId}`);
+
     const query = `
       SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
              RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
@@ -153,17 +196,45 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
     ]);
 
     if (configurations.length === 0) {
-      return {
-        status: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
-        jsonBody: {
-          success: false,
-          error: 'SFTP configuration not found'
-        }
-      };
+      if (existingConfig.TenantId !== tenantId) {
+        context.log(`Tenant mismatch: Config belongs to ${existingConfig.TenantId} but requested by ${tenantId}`);
+        return {
+          status: 403,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'Access denied: Configuration belongs to a different tenant'
+          }
+        };
+      } else if (!existingConfig.IsActive) {
+        context.log(`Configuration ${configId} is inactive`);
+        return {
+          status: 410,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SFTP configuration is inactive'
+          }
+        };
+      } else {
+        return {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SFTP configuration not found'
+          }
+        };
+      }
     }
 
     const row = configurations[0];
@@ -282,8 +353,10 @@ export async function createSftpConfiguration(request: HttpRequest, context: Inv
     // Generate a unique config ID for Key Vault secret naming
     const configId = `${tenantId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Generate Key Vault secret name based on config ID
-    const keyVaultSecretName = `sftp-${configId}-credentials`;
+    // Generate Key Vault secret name based on auth method (must match what storage functions create)
+    const keyVaultSecretName = configData.authMethod === 'password' 
+      ? `sftp-${configId}-password` 
+      : `sftp-${configId}-privatekey`;
 
     // Store credentials in Key Vault based on auth method
     if (configData.authMethod === 'password' && configData.password) {
@@ -295,12 +368,12 @@ export async function createSftpConfiguration(request: HttpRequest, context: Inv
     const query = `
       INSERT INTO dbo.SftpConfigurations (
         TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
-        RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
+        RemotePath, ConfigurationJson, PgpKeyId, EnablePgpEncryption, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
       )
       OUTPUT INSERTED.Id
       VALUES (
         @tenantId, @name, @host, @port, @username, @authMethod, @keyVaultSecretName,
-        @remotePath, @configurationJson, 1, GETUTCDATE(), GETUTCDATE(), @createdBy, @updatedBy
+        @remotePath, @configurationJson, @pgpKeyId, @enablePgpEncryption, 1, GETUTCDATE(), GETUTCDATE(), @createdBy, @updatedBy
       )
     `;
 
@@ -311,9 +384,11 @@ export async function createSftpConfiguration(request: HttpRequest, context: Inv
       { name: 'port', type: 'int', value: configData.port },
       { name: 'username', type: 'nvarchar', value: configData.username },
       { name: 'authMethod', type: 'nvarchar', value: configData.authMethod },
-      { name: 'keyVaultSecretName', type: 'nvarchar', value: configData.keyVaultSecretName },
+      { name: 'keyVaultSecretName', type: 'nvarchar', value: keyVaultSecretName },
       { name: 'remotePath', type: 'nvarchar', value: configData.remotePath || null },
       { name: 'configurationJson', type: 'nvarchar', value: configData.configurationJson || null },
+      { name: 'pgpKeyId', type: 'int', value: configData.pgpKeyId || null },
+      { name: 'enablePgpEncryption', type: 'bit', value: configData.enablePgpEncryption || false },
       { name: 'createdBy', type: 'nvarchar', value: 'system' },
       { name: 'updatedBy', type: 'nvarchar', value: 'system' }
     ];
@@ -456,6 +531,14 @@ export async function updateSftpConfiguration(request: HttpRequest, context: Inv
       updateFields.push('IsActive = @isActive');
       parameters.push({ name: 'isActive', type: 'bit', value: configData.isActive });
     }
+    if (configData.pgpKeyId !== undefined) {
+      updateFields.push('PgpKeyId = @pgpKeyId');
+      parameters.push({ name: 'pgpKeyId', type: 'int', value: configData.pgpKeyId });
+    }
+    if (configData.enablePgpEncryption !== undefined) {
+      updateFields.push('EnablePgpEncryption = @enablePgpEncryption');
+      parameters.push({ name: 'enablePgpEncryption', type: 'bit', value: configData.enablePgpEncryption });
+    }
 
     if (updateFields.length === 0) {
       return {
@@ -514,6 +597,8 @@ export async function updateSftpConfiguration(request: HttpRequest, context: Inv
 
 // Delete (soft delete) an SFTP configuration
 export async function deleteSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  context.log(`deleteSftpConfiguration function called with method: ${request.method}, URL: ${request.url}`);
+  
   // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return {
@@ -604,6 +689,112 @@ export async function deleteSftpConfiguration(request: HttpRequest, context: Inv
   }
 }
 
+// Test SFTP configuration connection
+export async function testSftpConfiguration(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
+  try {
+    const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
+    const configId = parseInt(request.params.id || '0');
+
+    if (isNaN(configId)) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Invalid configuration ID'
+        }
+      };
+    }
+
+    context.log(`Testing SFTP configuration ${configId} for tenant:`, tenantId);
+
+    // Get configuration from database
+    const query = `
+      SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
+             RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
+      FROM dbo.SftpConfigurations
+      WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+    `;
+
+    const configurations = await dbService.executeQueryWithParams(query, [
+      { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+      { name: 'configId', type: 'int', value: configId }
+    ]);
+
+    if (configurations.length === 0) {
+      return {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'SFTP configuration not found'
+        }
+      };
+    }
+
+    const row = configurations[0];
+    const sftpConfig = {
+      id: row.Id,
+      tenantId: row.TenantId,
+      name: row.Name,
+      host: row.Host,
+      port: row.Port,
+      username: row.Username,
+      authMethod: row.AuthMethod,
+      keyVaultSecretName: row.KeyVaultSecretName,
+      remotePath: row.RemotePath,
+      configurationJson: row.ConfigurationJson,
+      isActive: row.IsActive,
+    };
+
+    // Test the connection
+    const testResult = await sftpService.testConnection(sftpConfig);
+
+    return {
+      status: testResult.success ? 200 : 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id'
+      },
+      jsonBody: testResult
+    };
+  } catch (error) {
+    context.error('Error testing SFTP configuration:', error);
+    return {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: false,
+        error: 'Failed to test SFTP configuration',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }
+    };
+  }
+}
+
 // Register the functions
 app.http('getSftpConfigurations', {
   methods: ['GET', 'OPTIONS'],
@@ -615,7 +806,7 @@ app.http('getSftpConfigurations', {
 app.http('getSftpConfiguration', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
-  route: 'sftp/configurations/{id}',
+  route: 'sftp/configurations/get/{id}',
   handler: getSftpConfiguration
 });
 
@@ -629,13 +820,20 @@ app.http('createSftpConfiguration', {
 app.http('updateSftpConfiguration', {
   methods: ['PUT', 'OPTIONS'],
   authLevel: 'anonymous',
-  route: 'sftp/configurations/{id}',
+  route: 'sftp/configurations/update/{id}',
   handler: updateSftpConfiguration
 });
 
 app.http('deleteSftpConfiguration', {
   methods: ['DELETE', 'OPTIONS'],
   authLevel: 'anonymous',
-  route: 'sftp/configurations/{id}',
+  route: 'sftp/configurations/delete/{id}',
   handler: deleteSftpConfiguration
+});
+
+app.http('testSftpConfiguration', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sftp/configurations/{id}/test',
+  handler: testSftpConfiguration
 });

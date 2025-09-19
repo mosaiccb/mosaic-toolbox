@@ -55,7 +55,7 @@ export class PasswordDatabaseService {
     
     // Initialize Key Vault client for secrets
     const keyVaultName = process.env.KEY_VAULT_NAME || 'mosaic-toolbox-kv';
-    const keyVaultUrl = `https://${keyVaultName}.vault.azure.net/`;
+    const keyVaultUrl = process.env.AZURE_KEY_VAULT_ENDPOINT || `https://${keyVaultName}.vault.azure.net/`;
     this.keyVaultClient = new SecretClient(keyVaultUrl, this.credential);
   }
 

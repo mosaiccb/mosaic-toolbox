@@ -71,7 +71,7 @@ CREATE TABLE dbo.UKGTenantEndpoints (
 -- Create SftpConfigurations table
 CREATE TABLE dbo.SftpConfigurations (
     Id int NOT NULL IDENTITY(1,1),
-    TenantId uniqueidentifier NOT NULL,
+    TenantId uniqueidentifier NOT NULL DEFAULT NEWID(),
     Name nvarchar(200) NOT NULL,
     Host nvarchar(510) NOT NULL,
     Port int NOT NULL,
@@ -85,8 +85,7 @@ CREATE TABLE dbo.SftpConfigurations (
     UpdatedAt datetime2 NOT NULL,
     CreatedBy nvarchar(200) NULL,
     UpdatedBy nvarchar(200) NULL,
-    CONSTRAINT PK_SftpConfigurations PRIMARY KEY (Id),
-    CONSTRAINT FK_SftpConfigurations_UKGTenants FOREIGN KEY (TenantId) REFERENCES dbo.UKGTenants(Id)
+    CONSTRAINT PK_SftpConfigurations PRIMARY KEY (Id)
 );
 
 -- Indexes for performance

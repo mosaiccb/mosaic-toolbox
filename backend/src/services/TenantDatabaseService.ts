@@ -148,13 +148,11 @@ export class TenantDatabaseService {
 
   constructor() {
     // Initialize Azure credentials for Key Vault access
-    const clientId = process.env.AZURE_CLIENT_ID || '4663051e-32cf-49ed-9759-2ef91bbe9d73';
-    this.credential = new DefaultAzureCredential({
-      managedIdentityClientId: clientId
-    });
+    // Use system-assigned managed identity (no clientId needed) for Azure Function Apps
+    this.credential = new DefaultAzureCredential();
     
     // Initialize Key Vault client for secrets
-    const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || 'https://ukgsync-kv-5rrqlcuxyzlvy.vault.azure.net/';
+    const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || process.env.AZURE_KEY_VAULT_ENDPOINT || 'https://mosaic-toolbox-kv.vault.azure.net/';
     this.keyVaultClient = new SecretClient(keyVaultUrl, this.credential);
   }
 
@@ -305,7 +303,18 @@ export class TenantDatabaseService {
     });
 
     const result = await request.query(query);
-    return result.recordset || [];
+    
+    // For UPDATE/INSERT/DELETE queries, we need to return metadata about rows affected
+    // We'll add this information to the result array for backward compatibility
+    const recordset = result.recordset || [];
+    
+    // Add rowsAffected information to the result for UPDATE/INSERT/DELETE operations
+    if (result.rowsAffected && result.rowsAffected.length > 0) {
+      // Add the rowsAffected info as a property on the array
+      (recordset as any).rowsAffected = result.rowsAffected[0];
+    }
+    
+    return recordset;
   }
 
   /**
@@ -642,6 +651,86 @@ export class TenantDatabaseService {
     } catch (error) {
       console.error(`Error retrieving SFTP private key for config ${configId}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Get secret from Key Vault by exact secret name
+   * @param secretName The exact name of the secret in Key Vault
+   * @returns Promise<string | null>
+   */
+  async getSecretByName(secretName: string): Promise<string | null> {
+    try {
+      const secret = await this.keyVaultClient.getSecret(secretName);
+      return secret.value || null;
+    } catch (error) {
+      console.error(`Error retrieving secret ${secretName}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Store SharePoint client secret in Key Vault
+   * @param tenantId Tenant ID
+   * @param configId Configuration ID
+   * @param clientSecret Client secret content
+   * @returns Promise<void>
+   */
+  async storeSharePointClientSecret(tenantId: string, configId: string, clientSecret: string): Promise<void> {
+    try {
+      const secretName = `sharepoint-${configId}-clientsecret`;
+      await this.keyVaultClient.setSecret(secretName, clientSecret);
+    } catch (error) {
+      console.error(`Error storing SharePoint client secret for config ${configId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get SharePoint client secret from Key Vault
+   * @param tenantId Tenant ID
+   * @param configId Configuration ID
+   * @returns Promise<string | null>
+   */
+  async getSharePointClientSecret(tenantId: string, configId: string): Promise<string | null> {
+    try {
+      const secretName = `sharepoint-${configId}-clientsecret`;
+      const secret = await this.keyVaultClient.getSecret(secretName);
+      return secret.value || null;
+    } catch (error) {
+      console.error(`Error retrieving SharePoint client secret for config ${configId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Update SharePoint client secret in Key Vault
+   * @param tenantId Tenant ID
+   * @param secretName The Key Vault secret name
+   * @param clientSecret New client secret content
+   * @returns Promise<void>
+   */
+  async updateSharePointClientSecret(tenantId: string, secretName: string, clientSecret: string): Promise<void> {
+    try {
+      await this.keyVaultClient.setSecret(secretName, clientSecret);
+    } catch (error) {
+      console.error(`Error updating SharePoint client secret ${secretName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Store secret in Key Vault
+   * @param secretName The name of the secret to store
+   * @param secretValue The value to store
+   * @returns Promise<void>
+   */
+  async storeSecret(secretName: string, secretValue: string): Promise<void> {
+    try {
+      await this.keyVaultClient.setSecret(secretName, secretValue);
+    } catch (error) {
+      console.error(`Error storing secret ${secretName}:`, error);
+      throw error;
     }
   }
 

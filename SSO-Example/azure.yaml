@@ -1,0 +1,12 @@
+name: mosaic-dashboard-sso
+metadata:
+  template: mosaic-dashboard-sso@0.0.1-beta
+services:
+  web:
+    project: .
+    host: staticwebapp
+    language: js
+    dist: dist
+resources:
+  web:
+    type: host.staticwebapp
