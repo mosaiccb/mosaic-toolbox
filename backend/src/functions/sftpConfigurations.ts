@@ -62,7 +62,7 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
       query = `
         SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
                s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
-               s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+               s.PgpKeyId, s.EnablePgpEncryption, s.IsSharePointDeliveryDestination, p.Name as PgpKeyName
         FROM dbo.SftpConfigurations s
         LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
         WHERE s.IsActive = 1
@@ -73,7 +73,7 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
       query = `
         SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
                s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
-               s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+               s.PgpKeyId, s.EnablePgpEncryption, s.IsSharePointDeliveryDestination, p.Name as PgpKeyName
         FROM dbo.SftpConfigurations s
         LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
         WHERE s.IsActive = 1 AND (s.TenantId = @tenantId OR s.TenantId = @zeroGuid)
@@ -88,7 +88,7 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
       query = `
         SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
                s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
-               s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+               s.PgpKeyId, s.EnablePgpEncryption, s.IsSharePointDeliveryDestination, p.Name as PgpKeyName
         FROM dbo.SftpConfigurations s
         LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
         WHERE s.TenantId = @tenantId AND s.IsActive = 1
@@ -111,6 +111,7 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
       remotePath: row.RemotePath,
       configurationJson: row.ConfigurationJson,
       isActive: row.IsActive,
+      isSharePointDeliveryDestination: row.IsSharePointDeliveryDestination,
       createdAt: row.CreatedAt,
       updatedAt: row.UpdatedAt,
       createdBy: row.CreatedBy,
@@ -223,18 +224,22 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
     if (scope === 'all') {
       context.log('getSftpConfiguration using scope=all (bypass tenant filter)');
       query = `
-        SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
-               RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
-        FROM dbo.SftpConfigurations
-        WHERE Id = @configId AND IsActive = 1
+        SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
+               s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
+               s.PgpKeyId, s.EnablePgpEncryption, s.IsSharePointDeliveryDestination, p.Name as PgpKeyName
+        FROM dbo.SftpConfigurations s
+        LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
+        WHERE s.Id = @configId AND s.IsActive = 1
       `;
       params = [ { name: 'configId', type: 'int', value: configId } ];
     } else {
       query = `
-        SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
-               RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
-        FROM dbo.SftpConfigurations
-        WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+        SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
+               s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
+               s.PgpKeyId, s.EnablePgpEncryption, s.IsSharePointDeliveryDestination, p.Name as PgpKeyName
+        FROM dbo.SftpConfigurations s
+        LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
+        WHERE s.Id = @configId AND s.TenantId = @tenantId AND s.IsActive = 1
       `;
       params = [
         { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
@@ -299,10 +304,14 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
       remotePath: row.RemotePath,
       configurationJson: row.ConfigurationJson,
       isActive: row.IsActive,
+      isSharePointDeliveryDestination: row.IsSharePointDeliveryDestination,
       createdAt: row.CreatedAt,
       updatedAt: row.UpdatedAt,
       createdBy: row.CreatedBy,
-      updatedBy: row.UpdatedBy
+      updatedBy: row.UpdatedBy,
+      pgpKeyId: row.PgpKeyId,
+      enablePgpEncryption: row.EnablePgpEncryption,
+      pgpKeyName: row.PgpKeyName
     };
 
     return {
