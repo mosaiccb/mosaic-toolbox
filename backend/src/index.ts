@@ -62,6 +62,7 @@ import './functions/sharepoint';
 import './functions/sharePointConfigurations';
 import './functions/sharePointTransferJobs';
 import './functions/networkInfo';
+import './functions/sshTest';
 // import './functions/syncConfigurationManagement';
 // import './functions/maintenanceStatus';
 // import './functions/manualSyncTrigger';

@@ -47,23 +47,56 @@ export async function getSftpConfigurations(request: HttpRequest, context: Invoc
   try {
     // For now, we'll use a simple tenant ID from headers - in production this should be from authentication
     const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
+    const scope = (request.query.get('scope') || '').toLowerCase(); // '', 'tenant', 'tenant+global', 'all'
+    const includeAll = (request.query.get('includeAll') || '').toLowerCase() === 'true';
 
-    context.log('Getting SFTP configurations for tenant:', tenantId);
+    // Determine scope behavior
+    // Default: tenant only
+    const zeroGuid = '00000000-0000-0000-0000-000000000000';
+    let query = '';
+    let params: Array<{ name: string; type: string; value: any }> = [];
 
-    // Use a query to get SFTP configurations with PGP key information
-    const query = `
-      SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
-             s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
-             s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
-      FROM dbo.SftpConfigurations s
-      LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
-      WHERE s.TenantId = @tenantId AND s.IsActive = 1
-      ORDER BY s.Name
-    `;
+    if (scope === 'all' || includeAll) {
+      context.log('Getting SFTP configurations with scope=all');
+      query = `
+        SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
+               s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
+               s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+        FROM dbo.SftpConfigurations s
+        LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
+        WHERE s.IsActive = 1
+        ORDER BY s.Name
+      `;
+    } else if (scope === 'tenant+global') {
+      context.log('Getting SFTP configurations with scope=tenant+global for tenant:', tenantId);
+      query = `
+        SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
+               s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
+               s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+        FROM dbo.SftpConfigurations s
+        LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
+        WHERE s.IsActive = 1 AND (s.TenantId = @tenantId OR s.TenantId = @zeroGuid)
+        ORDER BY s.Name
+      `;
+      params = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'zeroGuid', type: 'uniqueidentifier', value: zeroGuid }
+      ];
+    } else {
+      context.log('Getting SFTP configurations with scope=tenant for tenant:', tenantId);
+      query = `
+        SELECT s.Id, s.TenantId, s.Name, s.Host, s.Port, s.Username, s.AuthMethod, s.KeyVaultSecretName,
+               s.RemotePath, s.ConfigurationJson, s.IsActive, s.CreatedAt, s.UpdatedAt, s.CreatedBy, s.UpdatedBy,
+               s.PgpKeyId, s.EnablePgpEncryption, p.Name as PgpKeyName
+        FROM dbo.SftpConfigurations s
+        LEFT JOIN dbo.PgpKeys p ON s.PgpKeyId = p.Id AND p.IsActive = 1
+        WHERE s.TenantId = @tenantId AND s.IsActive = 1
+        ORDER BY s.Name
+      `;
+      params = [ { name: 'tenantId', type: 'uniqueidentifier', value: tenantId } ];
+    }
 
-    const configurations = await dbService.executeQueryWithParams(query, [
-      { name: 'tenantId', type: 'uniqueidentifier', value: tenantId }
-    ]);
+    const configurations = await dbService.executeQueryWithParams(query, params);
 
     const result: SftpConfiguration[] = configurations.map((row: any) => ({
       id: row.Id,
@@ -135,7 +168,8 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
   }
 
   try {
-    const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
+  const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
+  const scope = (request.query.get('scope') || '').toLowerCase(); // allow 'all' to bypass tenant check
     const configId = parseInt(request.params.id || '0');
 
     if (isNaN(configId)) {
@@ -183,17 +217,31 @@ export async function getSftpConfiguration(request: HttpRequest, context: Invoca
     const existingConfig = existsResult[0];
     context.log(`SFTP configuration ${configId} exists with TenantId: ${existingConfig.TenantId}, IsActive: ${existingConfig.IsActive}, Requested TenantId: ${tenantId}`);
 
-    const query = `
-      SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
-             RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
-      FROM dbo.SftpConfigurations
-      WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
-    `;
+    let query = '';
+    let params: Array<{ name: string; type: string; value: any }> = [];
+    if (scope === 'all') {
+      context.log('getSftpConfiguration using scope=all (bypass tenant filter)');
+      query = `
+        SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
+               RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
+        FROM dbo.SftpConfigurations
+        WHERE Id = @configId AND IsActive = 1
+      `;
+      params = [ { name: 'configId', type: 'int', value: configId } ];
+    } else {
+      query = `
+        SELECT Id, TenantId, Name, Host, Port, Username, AuthMethod, KeyVaultSecretName,
+               RemotePath, ConfigurationJson, IsActive, CreatedAt, UpdatedAt, CreatedBy, UpdatedBy
+        FROM dbo.SftpConfigurations
+        WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+      `;
+      params = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'configId', type: 'int', value: configId }
+      ];
+    }
 
-    const configurations = await dbService.executeQueryWithParams(query, [
-      { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
-      { name: 'configId', type: 'int', value: configId }
-    ]);
+    const configurations = await dbService.executeQueryWithParams(query, params);
 
     if (configurations.length === 0) {
       if (existingConfig.TenantId !== tenantId) {

@@ -1,6 +1,9 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { TenantDatabaseService } from '../services/TenantDatabaseService';
 import { SharePointService } from '../services/SharePointService';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 // Initialize the database service
 const dbService = new TenantDatabaseService();
@@ -935,6 +938,249 @@ export async function getSharePointLibraries(request: HttpRequest, context: Invo
   }
 }
 
+// Get all lists and libraries for a specific site
+export async function getAllSharePointLists(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
+  try {
+    const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
+    const configId = request.query.get('configId');
+    const siteId = request.query.get('siteId');
+
+    if (!configId || !siteId) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Missing configId or siteId parameter'
+        }
+      };
+    }
+
+    // Get SharePoint configuration
+    const configQuery = `
+      SELECT ClientId, TenantDomain, KeyVaultSecretName 
+      FROM dbo.SharePointConfigurations 
+      WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+    `;
+
+    const configParams = [
+      { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+      { name: 'configId', type: 'int', value: parseInt(configId) }
+    ];
+
+    const configResults = await dbService.executeQueryWithParams(configQuery, configParams);
+    
+    if (!configResults || configResults.length === 0) {
+      return {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'SharePoint configuration not found'
+        }
+      };
+    }
+
+    const config = configResults[0];
+    
+    // Get client secret from Key Vault
+    const clientSecret = await dbService.getSecretByName(config.KeyVaultSecretName);
+    
+    if (!clientSecret) {
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Failed to retrieve client secret from Key Vault'
+        }
+      };
+    }
+
+    // Create SharePoint service
+    const sharePointService = new SharePointService(context, {
+      clientId: config.ClientId,
+      clientSecret: clientSecret,
+      tenantId: tenantId // Use the actual tenant ID from the request header
+    });
+
+    // Get all lists and libraries from the site
+    const lists = await sharePointService.getAllLists(siteId);
+    
+    context.log(`📋 Retrieved ${lists.length} SharePoint lists/libraries for site ${siteId}`);
+
+    return {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: true,
+        data: lists
+      }
+    };
+
+  } catch (error) {
+    context.error('Error getting SharePoint lists:', error);
+    
+    return {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: false,
+        error: 'Failed to get SharePoint lists',
+        details: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
+}
+
+// Get all available SharePoint sites in the tenant
+export async function getAllSharePointSites(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id',
+      },
+    };
+  }
+
+  try {
+    const tenantId = request.headers.get('x-tenant-id') || '00000000-0000-0000-0000-000000000000';
+    const configId = request.query.get('configId');
+
+    if (!configId) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Missing configId parameter'
+        }
+      };
+    }
+
+    // Get SharePoint configuration
+    const configQuery = `
+      SELECT ClientId, TenantDomain, KeyVaultSecretName 
+      FROM dbo.SharePointConfigurations 
+      WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+    `;
+
+    const configParams = [
+      { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+      { name: 'configId', type: 'int', value: parseInt(configId) }
+    ];
+
+    const configResults = await dbService.executeQueryWithParams(configQuery, configParams);
+    
+    if (!configResults || configResults.length === 0) {
+      return {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'SharePoint configuration not found'
+        }
+      };
+    }
+
+    const config = configResults[0];
+    
+    // Get client secret from Key Vault
+    const clientSecret = await dbService.getSecretByName(config.KeyVaultSecretName);
+    
+    if (!clientSecret) {
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Failed to retrieve client secret from Key Vault'
+        }
+      };
+    }
+
+    // Create SharePoint service
+    const sharePointService = new SharePointService(context, {
+      clientId: config.ClientId,
+      clientSecret: clientSecret,
+      tenantId: tenantId // Use the actual tenant ID from the request header
+    });
+
+    // Get all sites in the tenant
+    const sites = await sharePointService.getSites();
+    
+    context.log(`📋 Retrieved ${sites.length} SharePoint sites`);
+
+    return {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: true,
+        data: sites
+      }
+    };
+
+  } catch (error) {
+    context.error('Error getting all SharePoint sites:', error);
+    
+    return {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: false,
+        error: 'Failed to get SharePoint sites',
+        details: error instanceof Error ? error.message : String(error)
+      }
+    };
+  }
+}
+
 // Browse SharePoint drives for a configuration and site
 export async function browseSharePointDrives(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
   // Handle CORS preflight
@@ -1017,7 +1263,7 @@ export async function browseSharePointDrives(request: HttpRequest, context: Invo
 
     // Create SharePoint service
     const sharePointConfig = {
-      tenantId: config.TenantDomain.split('.')[0], // Extract tenant name from domain
+      tenantId: tenantId, // Use the actual tenant ID from the request header
       clientId: config.ClientId,
       clientSecret: clientSecret
     };
@@ -1138,13 +1384,25 @@ export async function browseSharePointItems(request: HttpRequest, context: Invoc
 
     // Create SharePoint service
     const sharePointConfig = {
-      tenantId: config.TenantDomain.split('.')[0], // Extract tenant name from domain
+      tenantId: tenantId, // Use the actual tenant ID from the request header
       clientId: config.ClientId,
       clientSecret: clientSecret
     };
 
     const sharePointService = new SharePointService(context, sharePointConfig);
+    
+    context.log(`🔍 Browsing SharePoint items:`);
+    context.log(`  - Config ID: ${configId}`);
+    context.log(`  - Site ID: ${siteId}`);
+    context.log(`  - Drive ID: ${driveId}`);
+    context.log(`  - Item ID: ${itemId || 'root'}`);
+    
     const items = await sharePointService.getItems(driveId, itemId || 'root');
+    
+    context.log(`📁 Found ${items.length} items in drive/folder`);
+    items.forEach((item, index) => {
+      context.log(`  ${index + 1}. ${item.name} ${item.isFolder ? '(Folder)' : '(File)'}`);
+    });
 
     return {
       status: 200,
@@ -1175,7 +1433,220 @@ export async function browseSharePointItems(request: HttpRequest, context: Invoc
   }
 }
 
+/**
+ * Test SharePoint Connection Handler
+ */
+async function testSharePointConnection(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  if (request.method === 'OPTIONS') {
+    return {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-tenant-id'
+      }
+    };
+  }
+
+  try {
+    const tenantId = request.headers.get('x-tenant-id');
+    if (!tenantId) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Missing x-tenant-id header'
+        }
+      };
+    }
+
+    const requestBody = await request.json() as any;
+    const { tenantDomain, clientId, clientSecret } = requestBody;
+
+    if (!tenantDomain || !clientId || !clientSecret) {
+      return {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Missing required fields: tenantDomain, clientId, clientSecret'
+        }
+      };
+    }
+
+    // Create SharePoint service with provided credentials
+    const sharePointConfig = {
+      tenantId: tenantId,
+      clientId: clientId,
+      clientSecret: clientSecret
+    };
+
+    const sharePointService = new SharePointService(context, sharePointConfig);
+    
+    // Test connection by fetching sites
+    const sites = await sharePointService.getSites();
+
+    return {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: true,
+        data: sites
+      }
+    };
+  } catch (error) {
+    context.error('Error testing SharePoint connection:', error);
+    
+    return {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+      jsonBody: {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to test SharePoint connection'
+      }
+    };
+  }
+}
+
 // Register HTTP routes
+// Update the getSftpDestinations function to filter by delivery flag
+app.http('getSftpDestinations', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sftp/destinations',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      if (request.method === 'OPTIONS') {
+        return {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-tenant-id'
+          }
+        };
+      }
+
+      const tenantId = request.headers.get('x-tenant-id');
+      if (!tenantId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing x-tenant-id header',
+            message: 'Please provide tenant ID in request headers'
+          }
+        };
+      }
+
+      const scope = (request.query.get('scope') || '').toLowerCase();
+      const deliveryOnly = request.query.get('deliveryOnly') === 'true'; // New parameter for delivery filtering
+      const zeroGuid = '00000000-0000-0000-0000-000000000000';
+      let sftpQuery = '';
+      let sftpParams: Array<{ name: string; type: string; value: any }> = [];
+
+      // Build base SELECT with delivery flag
+      const baseSelect = `
+        SELECT Id, Name, Host, Port, Username, RemotePath, IsActive, IsSharePointDeliveryDestination
+        FROM dbo.SftpConfigurations 
+      `;
+
+      // Build WHERE conditions
+      const conditions = ['IsActive = 1'];
+      
+      if (deliveryOnly) {
+        conditions.push('IsSharePointDeliveryDestination = 1');
+        context.log(`📋 Getting SharePoint delivery SFTP destinations only`);
+      }
+
+      if (scope === 'all') {
+        context.log(`📋 Getting SFTP destinations with scope=all${deliveryOnly ? ' (delivery only)' : ''}`);
+        sftpQuery = `${baseSelect} WHERE ${conditions.join(' AND ')} ORDER BY Name`;
+      } else if (scope === 'tenant+global') {
+        conditions.push('(TenantId = @tenantId OR TenantId = @zeroGuid)');
+        context.log(`📋 Getting SFTP destinations for tenant ${tenantId} with scope=tenant+global${deliveryOnly ? ' (delivery only)' : ''}`);
+        sftpQuery = `${baseSelect} WHERE ${conditions.join(' AND ')} ORDER BY Name`;
+        sftpParams = [
+          { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+          { name: 'zeroGuid', type: 'uniqueidentifier', value: zeroGuid }
+        ];
+      } else {
+        conditions.push('TenantId = @tenantId');
+        context.log(`📋 Getting SFTP destinations for tenant ${tenantId} with scope=tenant${deliveryOnly ? ' (delivery only)' : ''}`);
+        sftpQuery = `${baseSelect} WHERE ${conditions.join(' AND ')} ORDER BY Name`;
+        sftpParams = [
+          { name: 'tenantId', type: 'uniqueidentifier', value: tenantId }
+        ];
+      }
+
+      const sftpResults = await dbService.executeQueryWithParams(sftpQuery, sftpParams);
+      
+      const destinations = sftpResults.map((row: any) => ({
+        id: row.Id,
+        name: row.Name,
+        host: row.Host,
+        port: row.Port,
+        username: row.Username,
+        remotePath: row.RemotePath || '/',
+        isSharePointDeliveryDestination: row.IsSharePointDeliveryDestination,
+        displayName: `${row.Name} (${row.Host})${row.IsSharePointDeliveryDestination ? ' [📤 Delivery]' : ''}`
+      }));
+
+      context.log(`✅ Found ${destinations.length} SFTP destinations${deliveryOnly ? ' (delivery-enabled)' : ''}`);
+
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: true,
+          data: destinations,
+          meta: {
+            total: destinations.length,
+            deliveryOnly: deliveryOnly,
+            scope: scope || 'tenant'
+          }
+        }
+      };
+      
+    } catch (error: any) {
+      context.error('❌ Error getting SFTP destinations:', error);
+      
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Failed to get SFTP destinations',
+          message: error.message || 'An unknown error occurred',
+          details: error.stack
+        }
+      };
+    }
+  }
+});
+
 app.http('getSharePointConfigurations', {
   methods: ['GET', 'OPTIONS'],
   route: 'sharepoint/configurations/list',
@@ -1224,6 +1695,18 @@ app.http('getSharePointLibraries', {
   handler: getSharePointLibraries
 });
 
+app.http('getAllSharePointSites', {
+  methods: ['GET', 'OPTIONS'],
+  route: 'sharepoint/sites/all',
+  handler: getAllSharePointSites
+});
+
+app.http('getAllSharePointLists', {
+  methods: ['GET', 'OPTIONS'],
+  route: 'sharepoint/lists/all',
+  handler: getAllSharePointLists
+});
+
 app.http('browseConfigSharePointDrives', {
   methods: ['GET', 'OPTIONS'],
   route: 'sharepoint/drives',
@@ -1234,4 +1717,810 @@ app.http('browseConfigSharePointItems', {
   methods: ['GET', 'OPTIONS'],
   route: 'sharepoint/items',
   handler: browseSharePointItems
+});
+
+app.http('testSharePointConnection', {
+  methods: ['POST', 'OPTIONS'],
+  route: 'sharepoint/test-connection',
+  handler: testSharePointConnection
+});
+
+// Get SharePoint items using drive-based approach
+app.http('getSharePointItemsByDrive', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sharepoint/drive-items',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      if (request.method === 'OPTIONS') {
+        return {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-tenant-id'
+          }
+        };
+      }
+
+      const tenantId = request.headers.get('x-tenant-id');
+      if (!tenantId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing x-tenant-id header',
+            message: 'Please provide tenant ID in request headers'
+          }
+        };
+      }
+
+      const configId = request.query.get('configId');
+      const driveId = request.query.get('driveId');
+      const folderPath = request.query.get('folderPath') || '';
+      
+      if (!configId || !driveId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing required parameters',
+            message: 'Please provide configId and driveId in query parameters'
+          }
+        };
+      }
+
+      // Get SharePoint configuration
+      const configQuery = `
+        SELECT ClientId, TenantDomain, KeyVaultSecretName 
+        FROM dbo.SharePointConfigurations 
+        WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+      `;
+
+      const configParams = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'configId', type: 'int', value: parseInt(configId) }
+      ];
+
+      const configResults = await dbService.executeQueryWithParams(configQuery, configParams);
+      
+      if (!configResults || configResults.length === 0) {
+        return {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SharePoint configuration not found'
+          }
+        };
+      }
+
+      const config = configResults[0];
+      
+      // Get client secret from Key Vault
+      const clientSecret = await dbService.getSecretByName(config.KeyVaultSecretName);
+      
+      if (!clientSecret) {
+        return {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'Failed to retrieve client secret from Key Vault'
+          }
+        };
+      }
+
+      // Create SharePoint service
+      const sharePointConfig = {
+        tenantId: tenantId,
+        clientId: config.ClientId,
+        clientSecret: clientSecret
+      };
+
+      const sharePointService = new SharePointService(context, sharePointConfig);
+      
+      // Get drive items using the recommended approach
+      const items = await sharePointService.getItemsByDriveId(driveId, folderPath, context);
+      
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: true,
+          data: items,
+          message: `Retrieved ${items.length} items from drive ${driveId}${folderPath ? ` in folder ${folderPath}` : ' (root)'}`
+        }
+      };
+
+    } catch (error: any) {
+      context.error('Error getting drive items:', error);
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: { 
+          error: 'Internal server error',
+          message: error.message || 'Failed to get drive items',
+          details: error.stack,
+          status: error.status || 'Unknown'
+        }
+      };
+    }
+  }
+});
+
+// Get SharePoint Site Pages for a site
+app.http('getSharePointSitePages', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sharepoint/pages',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      if (request.method === 'OPTIONS') {
+        return {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-tenant-id'
+          }
+        };
+      }
+
+      const tenantId = request.headers.get('x-tenant-id');
+      if (!tenantId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing x-tenant-id header',
+            message: 'Please provide tenant ID in request headers'
+          }
+        };
+      }
+
+      const configId = request.query.get('configId');
+      const siteId = request.query.get('siteId');
+      
+      if (!configId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing configId parameter',
+            message: 'Please provide configId in query parameters'
+          }
+        };
+      }
+
+      if (!siteId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing siteId parameter',
+            message: 'Please provide siteId in query parameters'
+          }
+        };
+      }
+
+      // Get SharePoint configuration
+      
+      const configQuery = `
+        SELECT ClientId, TenantDomain, KeyVaultSecretName 
+        FROM dbo.SharePointConfigurations 
+        WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+      `;
+
+      const configParams = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'configId', type: 'int', value: parseInt(configId) }
+      ];
+
+      const configResults = await dbService.executeQueryWithParams(configQuery, configParams);
+      
+      if (!configResults || configResults.length === 0) {
+        return {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SharePoint configuration not found'
+          }
+        };
+      }
+
+      const config = configResults[0];
+      
+      // Get client secret from Key Vault
+      const clientSecret = await dbService.getSecretByName(config.KeyVaultSecretName);
+      
+      if (!clientSecret) {
+        return {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'Failed to retrieve client secret from Key Vault'
+          }
+        };
+      }
+
+      // Create SharePoint service
+      const sharePointConfig = {
+        tenantId: tenantId,
+        clientId: config.ClientId,
+        clientSecret: clientSecret
+      };
+
+      const sharePointService = new SharePointService(context, sharePointConfig);
+      
+      // Get Site Pages
+      const pages = await sharePointService.getSitePages(siteId, context);
+      
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: true,
+          data: pages,
+          message: `Retrieved ${pages.length} pages for site ${siteId}`
+        }
+      };
+
+    } catch (error: any) {
+      context.error('Error getting SharePoint Site Pages:', error);
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: { 
+          error: 'Internal server error',
+          message: error.message || 'Failed to get SharePoint Site Pages',
+          details: error.stack,
+          status: error.status || 'Unknown'
+        }
+      };
+    }
+  }
+});
+
+// Download SharePoint file
+app.http('downloadSharePointFileConfig', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sharepoint/download',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      if (request.method === 'OPTIONS') {
+        return {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-tenant-id'
+          }
+        };
+      }
+
+      const tenantId = request.headers.get('x-tenant-id');
+      if (!tenantId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing x-tenant-id header',
+            message: 'Please provide tenant ID in request headers'
+          }
+        };
+      }
+
+      const configId = request.query.get('configId');
+      const siteId = request.query.get('siteId');
+      const driveId = request.query.get('driveId');
+      const itemId = request.query.get('itemId');
+      
+      if (!configId || !siteId || !driveId || !itemId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing required parameters',
+            message: 'Please provide configId, siteId, driveId, and itemId in query parameters'
+          }
+        };
+      }
+
+      context.log(`📥 Download request for drive ${driveId}, item ${itemId}`);
+
+      // Get SharePoint configuration
+      const configQuery = `
+        SELECT ClientId, TenantDomain, KeyVaultSecretName 
+        FROM dbo.SharePointConfigurations 
+        WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+      `;
+
+      const configParams = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'configId', type: 'int', value: parseInt(configId) }
+      ];
+
+      const configResults = await dbService.executeQueryWithParams(configQuery, configParams);
+      
+      if (!configResults || configResults.length === 0) {
+        return {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SharePoint configuration not found'
+          }
+        };
+      }
+
+      const config = configResults[0];
+      
+      // Get client secret from Key Vault
+      const clientSecret = await dbService.getSecretByName(config.KeyVaultSecretName);
+      if (!clientSecret) {
+        return {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'Failed to retrieve client secret from Key Vault'
+          }
+        };
+      }
+      
+      // Initialize SharePoint service
+      const sharePointConfig = {
+        tenantId: tenantId,
+        clientId: config.ClientId,
+        clientSecret: clientSecret
+      };
+
+      const sharePointService = new SharePointService(context, sharePointConfig);
+
+      // Download the file
+      const fileBuffer = await sharePointService.downloadFile(driveId, itemId);
+
+      context.log(`✅ File downloaded successfully: ${fileBuffer.length} bytes`);
+
+      // Return the file as response
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Access-Control-Allow-Origin': '*',
+          'Content-Disposition': 'attachment'
+        },
+        body: fileBuffer
+      };
+      
+    } catch (error: any) {
+      context.error('❌ Error downloading SharePoint file:', error);
+      
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Failed to download SharePoint file',
+          message: error.message || 'An unknown error occurred',
+          details: error.stack,
+          status: error.status || 'Unknown'
+        }
+      };
+    }
+  }
+});
+
+// Transfer SharePoint file to SFTP
+app.http('transferSharePointFileToSftp', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sharepoint/transfer-to-sftp',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      if (request.method === 'OPTIONS') {
+        return {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-tenant-id'
+          }
+        };
+      }
+
+      const tenantId = request.headers.get('x-tenant-id');
+      if (!tenantId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing x-tenant-id header',
+            message: 'Please provide tenant ID in request headers'
+          }
+        };
+      }
+
+      const requestBody = await request.json() as any;
+      const { configId, siteId, driveId, itemId, fileName, sftpDestinationId } = requestBody;
+      
+      if (!configId || !siteId || !driveId || !itemId || !fileName || !sftpDestinationId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing required parameters',
+            message: 'Please provide configId, siteId, driveId, itemId, fileName, and sftpDestinationId'
+          }
+        };
+      }
+
+      context.log(`🚀 SFTP transfer request: ${fileName} from drive ${driveId} to SFTP destination ${sftpDestinationId}`);
+
+      // Get SharePoint configuration
+      const configQuery = `
+        SELECT ClientId, TenantDomain, KeyVaultSecretName 
+        FROM dbo.SharePointConfigurations 
+        WHERE Id = @configId AND TenantId = @tenantId AND IsActive = 1
+      `;
+
+      const configParams = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'configId', type: 'int', value: parseInt(configId) }
+      ];
+
+      const configResults = await dbService.executeQueryWithParams(configQuery, configParams);
+      
+      if (!configResults || configResults.length === 0) {
+        return {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SharePoint configuration not found'
+          }
+        };
+      }
+
+      const config = configResults[0];
+
+      // Get SFTP destination configuration
+      const sftpQuery = `
+        SELECT Id, Name, Host, Port, Username, KeyVaultSecretName, RemotePath, IsActive
+        FROM dbo.SftpConfigurations 
+        WHERE Id = @sftpDestinationId AND TenantId = @tenantId AND IsActive = 1
+      `;
+
+      const sftpParams = [
+        { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+        { name: 'sftpDestinationId', type: 'int', value: parseInt(sftpDestinationId) }
+      ];
+
+      const sftpResults = await dbService.executeQueryWithParams(sftpQuery, sftpParams);
+      
+      if (!sftpResults || sftpResults.length === 0) {
+        return {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'SFTP destination configuration not found'
+          }
+        };
+      }
+
+      const sftpConfig = sftpResults[0];
+
+      // Get client secret from Key Vault for SharePoint
+      const clientSecret = await dbService.getSecretByName(config.KeyVaultSecretName);
+      if (!clientSecret) {
+        return {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'Failed to retrieve SharePoint client secret from Key Vault'
+          }
+        };
+      }
+
+      // Get SFTP password from Key Vault
+      const sftpPassword = await dbService.getSecretByName(sftpConfig.KeyVaultSecretName);
+      if (!sftpPassword) {
+        return {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: {
+            success: false,
+            error: 'Failed to retrieve SFTP password from Key Vault'
+          }
+        };
+      }
+      
+      // Initialize SharePoint service and download file
+      const sharePointConfig = {
+        tenantId: tenantId,
+        clientId: config.ClientId,
+        clientSecret: clientSecret
+      };
+
+      const sharePointService = new SharePointService(context, sharePointConfig);
+      
+      context.log(`📥 Downloading file from SharePoint...`);
+      const fileBuffer = await sharePointService.downloadFile(driveId, itemId);
+
+      context.log(`📤 Uploading file to SFTP: ${sftpConfig.Host}`);
+      
+      // Initialize SFTP service
+      const { SftpService } = await import('../services/SftpService');
+      const sftpService = new SftpService();
+      
+      // Create temporary file from buffer
+      const tempDir = os.tmpdir();
+      const tempFilePath = path.join(tempDir, `sharepoint_${Date.now()}_${fileName}`);
+      const remotePath = `${sftpConfig.RemotePath}/${fileName}`;
+      
+      fs.writeFileSync(tempFilePath, fileBuffer);
+      
+      try {
+        // Create SFTP configuration for connection
+        const sftpConnectConfig = {
+          id: sftpConfig.Id,
+          tenantId: tenantId,
+          name: sftpConfig.Name,
+          host: sftpConfig.Host,
+          port: sftpConfig.Port,
+          username: sftpConfig.Username,
+          authMethod: 'password',
+          keyVaultSecretName: sftpConfig.KeyVaultSecretName,
+          remotePath: sftpConfig.RemotePath,
+          isActive: true
+        };
+
+        // Create SFTP connection
+        const connection = await sftpService.connect(sftpConnectConfig);
+        
+        // Upload file using existing uploadFile method
+        await sftpService.uploadFile(connection, tempFilePath, remotePath);
+        
+        // Close connection
+        connection.end();
+        
+      } finally {
+        // Clean up temporary file
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
+      }
+
+      context.log(`✅ File transfer completed: ${fileName} → ${sftpConfig.Host}${remotePath}`);
+
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: true,
+          message: `File successfully transferred to ${sftpConfig.Name}`,
+          details: {
+            fileName: fileName,
+            sftpDestination: sftpConfig.Name,
+            remotePath: remotePath,
+            fileSize: fileBuffer.length
+          }
+        }
+      };
+      
+    } catch (error: any) {
+      context.error('❌ Error transferring SharePoint file to SFTP:', error);
+      
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Failed to transfer SharePoint file to SFTP',
+          message: error.message || 'An unknown error occurred',
+          details: error.stack,
+          status: error.status || 'Unknown'
+        }
+      };
+    }
+  }
+});
+
+// Get available SFTP destinations
+app.http('getSftpDestinations', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'sftp/destinations',
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    try {
+      if (request.method === 'OPTIONS') {
+        return {
+          status: 200,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-tenant-id'
+          }
+        };
+      }
+
+      const tenantId = request.headers.get('x-tenant-id');
+      if (!tenantId) {
+        return {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          },
+          jsonBody: { 
+            error: 'Missing x-tenant-id header',
+            message: 'Please provide tenant ID in request headers'
+          }
+        };
+      }
+
+      const scope = (request.query.get('scope') || '').toLowerCase(); // '', 'tenant', 'tenant+global', 'all'
+      const zeroGuid = '00000000-0000-0000-0000-000000000000';
+      let sftpQuery = '';
+      let sftpParams: Array<{ name: string; type: string; value: any }> = [];
+
+      if (scope === 'all') {
+        context.log('📋 Getting SFTP destinations with scope=all');
+        sftpQuery = `
+          SELECT Id, Name, Host, Port, Username, RemotePath, IsActive
+          FROM dbo.SftpConfigurations 
+          WHERE IsActive = 1
+          ORDER BY Name
+        `;
+      } else if (scope === 'tenant+global') {
+        context.log(`📋 Getting SFTP destinations for tenant ${tenantId} with scope=tenant+global`);
+        sftpQuery = `
+          SELECT Id, Name, Host, Port, Username, RemotePath, IsActive
+          FROM dbo.SftpConfigurations 
+          WHERE IsActive = 1 AND (TenantId = @tenantId OR TenantId = @zeroGuid)
+          ORDER BY Name
+        `;
+        sftpParams = [
+          { name: 'tenantId', type: 'uniqueidentifier', value: tenantId },
+          { name: 'zeroGuid', type: 'uniqueidentifier', value: zeroGuid }
+        ];
+      } else {
+        context.log(`📋 Getting SFTP destinations for tenant ${tenantId} with scope=tenant (default)`);
+        sftpQuery = `
+          SELECT Id, Name, Host, Port, Username, RemotePath, IsActive
+          FROM dbo.SftpConfigurations 
+          WHERE TenantId = @tenantId AND IsActive = 1
+          ORDER BY Name
+        `;
+        sftpParams = [
+          { name: 'tenantId', type: 'uniqueidentifier', value: tenantId }
+        ];
+      }
+
+      const sftpResults = await dbService.executeQueryWithParams(sftpQuery, sftpParams);
+      
+      const destinations = sftpResults.map((row: any) => ({
+        id: row.Id,
+        name: row.Name,
+        host: row.Host,
+        port: row.Port,
+        username: row.Username,
+        remotePath: row.RemotePath || '/',
+        displayName: `${row.Name} (${row.Host})`
+      }));
+
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: true,
+          data: destinations
+        }
+      };
+      
+    } catch (error: any) {
+      context.error('❌ Error getting SFTP destinations:', error);
+      
+      return {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        jsonBody: {
+          success: false,
+          error: 'Failed to get SFTP destinations',
+          message: error.message || 'An unknown error occurred',
+          details: error.stack
+        }
+      };
+    }
+  }
 });
