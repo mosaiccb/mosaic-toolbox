@@ -20,6 +20,7 @@ export interface SftpConfiguration {
   remotePath?: string;
   configurationJson?: string;
   isActive: boolean;
+  isSharePointDeliveryDestination?: boolean; // Available as SharePoint delivery destination
   createdAt?: Date;
   updatedAt?: Date;
   createdBy?: string;
@@ -587,8 +588,23 @@ export async function updateSftpConfiguration(request: HttpRequest, context: Inv
       updateFields.push('EnablePgpEncryption = @enablePgpEncryption');
       parameters.push({ name: 'enablePgpEncryption', type: 'bit', value: configData.enablePgpEncryption });
     }
+    if (configData.isSharePointDeliveryDestination !== undefined) {
+      updateFields.push('IsSharePointDeliveryDestination = @isSharePointDeliveryDestination');
+      parameters.push({ name: 'isSharePointDeliveryDestination', type: 'bit', value: configData.isSharePointDeliveryDestination });
+    }
 
-    if (updateFields.length === 0) {
+    // Handle credential updates in Key Vault if provided
+    if (configData.password || configData.privateKey) {
+      if (configData.authMethod === 'password' && configData.password) {
+        await dbService.storeSftpPassword(tenantId, configId.toString(), configData.password);
+        context.log(`Updated password in Key Vault for SFTP configuration ${configId}`);
+      } else if (configData.authMethod === 'privateKey' && configData.privateKey) {
+        await dbService.storeSftpPrivateKey(tenantId, configId.toString(), configData.privateKey);
+        context.log(`Updated private key in Key Vault for SFTP configuration ${configId}`);
+      }
+    }
+
+    if (updateFields.length === 0 && !configData.password && !configData.privateKey) {
       return {
         status: 400,
         headers: {
