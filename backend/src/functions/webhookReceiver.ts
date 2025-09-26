@@ -302,8 +302,10 @@ function extractEventType(payload: any, webhookType: string): string {
       return payload.action ? `${payload.action}` : (payload.zen ? 'ping' : 'unknown');
     case 'stripe':
       return payload.type || 'unknown';
+    case 'ukg-ready':
+      return payload.EventType || payload.eventType || 'ukg-event';
     default:
-      return payload.event_type || payload.type || payload.action || 'webhook';
+      return payload.event_type || payload.type || payload.action || payload.EventType || 'webhook';
   }
 }
 
@@ -314,8 +316,10 @@ function extractEventId(payload: any, webhookType: string): string {
       return payload.delivery || payload.hook_id || '';
     case 'stripe':
       return payload.id || '';
+    case 'ukg-ready':
+      return payload.EventId || payload.eventId || '';
     default:
-      return payload.id || payload.event_id || payload.uuid || '';
+      return payload.id || payload.event_id || payload.uuid || payload.EventId || '';
   }
 }
 
