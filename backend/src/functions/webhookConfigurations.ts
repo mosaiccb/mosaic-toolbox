@@ -224,8 +224,8 @@ export async function createWebhookConfiguration(request: HttpRequest, context: 
 
     // Normalize endpoint path
     let endpointPath = configData.endpointPath;
-    if (!endpointPath.startsWith('/webhooks/')) {
-      endpointPath = `/webhooks/${endpointPath.replace(/^\/+/, '')}`;
+    if (!endpointPath.startsWith('/webhooks/endpoint/')) {
+      endpointPath = `/webhooks/endpoint/${endpointPath.replace(/^\/+/, '')}`;
     }
 
     // Generate secret key if not provided

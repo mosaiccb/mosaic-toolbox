@@ -70,9 +70,11 @@ export async function receiveWebhook(request: HttpRequest, context: InvocationCo
   try {
     // Extract webhook path from URL
     const url = new URL(request.url);
-    const webhookPath = url.pathname.replace('/api', ''); // Remove /api prefix
+    const fullPath = url.pathname.replace('/api', ''); // Remove /api prefix
+    // Convert from /webhooks/endpoint/{path} to /webhooks/{path} for database lookup
+    const webhookPath = fullPath.replace('/webhooks/endpoint/', '/webhooks/');
     
-    context.log('Processing webhook for path:', webhookPath);
+    context.log('Processing webhook for path:', webhookPath, 'from full path:', fullPath);
 
     // Get request details
     const sourceIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
@@ -141,11 +143,24 @@ export async function receiveWebhook(request: HttpRequest, context: InvocationCo
     let eventType = 'unknown';
     let eventId = '';
     try {
-      const payload = JSON.parse(payloadText);
-      eventType = extractEventType(payload, config.WebhookType);
-      eventId = extractEventId(payload, config.WebhookType);
+      // Log the raw payload for debugging
+      context.log('Raw payload received:', payloadText);
+      
+      if (!payloadText || payloadText.trim() === '') {
+        context.warn('Empty payload received');
+        eventType = 'empty';
+        eventId = 'empty-' + Date.now();
+      } else {
+        const payload = JSON.parse(payloadText);
+        eventType = extractEventType(payload, config.WebhookType);
+        eventId = extractEventId(payload, config.WebhookType);
+        context.log('Parsed payload successfully - EventType:', eventType, 'EventId:', eventId);
+      }
     } catch (error) {
       context.warn('Failed to parse payload as JSON:', error);
+      context.warn('Payload content:', payloadText.substring(0, 200)); // Log first 200 chars
+      eventType = 'invalid-json';
+      eventId = 'invalid-' + Date.now();
     }
 
     // Store webhook event
@@ -323,10 +338,10 @@ function extractEventId(payload: any, webhookType: string): string {
   }
 }
 
-// Register the webhook receiver with a catch-all route
+// Register the webhook receiver for endpoint paths (not management endpoints)
 app.http('receiveWebhook', {
   methods: ['POST', 'OPTIONS'],
   authLevel: 'anonymous',
-  route: 'webhooks/{*path}', // Catch all paths under /api/webhooks/
+  route: 'webhooks/endpoint/{*path}', // Catch webhook endpoint paths under /api/webhooks/endpoint/
   handler: receiveWebhook
 });
