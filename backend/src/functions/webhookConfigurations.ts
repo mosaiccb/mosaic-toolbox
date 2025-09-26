@@ -520,35 +520,35 @@ function generateSecretKey(): string {
 }
 
 // Register webhook configuration management endpoints
-app.http('getWebhookConfigurations', {
+app.http('listWebhookConfigs', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'webhooks/configurations',
   handler: getWebhookConfigurations
 });
 
-app.http('getWebhookConfiguration', {
+app.http('getWebhookConfig', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'webhooks/configurations/{id}',
   handler: getWebhookConfiguration
 });
 
-app.http('createWebhookConfiguration', {
+app.http('createWebhookConfig', {
   methods: ['POST', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'webhooks/configurations',
   handler: createWebhookConfiguration
 });
 
-app.http('updateWebhookConfiguration', {
+app.http('updateWebhookConfig', {
   methods: ['PUT', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'webhooks/configurations/{id}',
   handler: updateWebhookConfiguration
 });
 
-app.http('deleteWebhookConfiguration', {
+app.http('deleteWebhookConfig', {
   methods: ['DELETE', 'OPTIONS'],
   authLevel: 'anonymous',
   route: 'webhooks/configurations/{id}',
