@@ -233,7 +233,13 @@ function validateGitHubSignature(payload: string, signature: string, secret: str
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(payload, 'utf8');
   const expectedSignature = `sha256=${hmac.digest('hex')}`;
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+  
+  // Ensure both strings are the same length for timingSafeEqual
+  if (signature.length !== expectedSignature.length) {
+    return false;
+  }
+  
+  return crypto.timingSafeEqual(Buffer.from(signature, 'utf8'), Buffer.from(expectedSignature, 'utf8'));
 }
 
 // Stripe webhook signature validation  
@@ -246,7 +252,13 @@ function validateStripeSignature(payload: string, signature: string, secret: str
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(payload, 'utf8');
   const expectedSignature = hmac.digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(signatureHash), Buffer.from(expectedSignature));
+  
+  // Ensure both strings are the same length for timingSafeEqual
+  if (signatureHash.length !== expectedSignature.length) {
+    return false;
+  }
+  
+  return crypto.timingSafeEqual(Buffer.from(signatureHash, 'utf8'), Buffer.from(expectedSignature, 'utf8'));
 }
 
 // Generic HMAC SHA256 signature validation
@@ -257,7 +269,13 @@ function validateGenericHmacSignature(payload: string, signature: string, secret
   
   // Handle both prefixed (sha256=) and non-prefixed signatures
   const receivedSignature = signature.startsWith('sha256=') ? signature.substring(7) : signature;
-  return crypto.timingSafeEqual(Buffer.from(receivedSignature), Buffer.from(expectedSignature));
+  
+  // Ensure both strings are the same length for timingSafeEqual
+  if (receivedSignature.length !== expectedSignature.length) {
+    return false;
+  }
+  
+  return crypto.timingSafeEqual(Buffer.from(receivedSignature, 'utf8'), Buffer.from(expectedSignature, 'utf8'));
 }
 
 // Check if source IP is allowed
