@@ -520,6 +520,13 @@ function generateSecretKey(): string {
 }
 
 // Register webhook configuration management endpoints
+app.http('webhookConfigsList', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'webhooks/configs',
+  handler: getWebhookConfigurations
+});
+
 app.http('listWebhookConfigs', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
