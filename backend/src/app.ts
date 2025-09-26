@@ -68,6 +68,8 @@ import './functions/sharePointTransferJobs';
 import './functions/webhookReceiver';
 import './functions/webhookConfigurations';
 import './functions/webhookEvents';
+import './functions/ukgWebhookReceiver';
+import './functions/ukgWebhookConfigurations';
 import './functions/networkInfo';
 import './functions/sshTest';
 // import './functions/parBrinkXmlTest';
