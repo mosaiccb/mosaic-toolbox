@@ -520,6 +520,7 @@ function generateSecretKey(): string {
 }
 
 // Register webhook configuration management endpoints
+// Primary alternative endpoints (these work)
 app.http('webhookConfigsList', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
@@ -527,6 +528,35 @@ app.http('webhookConfigsList', {
   handler: getWebhookConfigurations
 });
 
+app.http('createWebhookConfigAlt', {
+  methods: ['POST', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'webhooks/configs',
+  handler: createWebhookConfiguration
+});
+
+app.http('getWebhookConfigAlt', {
+  methods: ['GET', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'webhooks/configs/{id}',
+  handler: getWebhookConfiguration
+});
+
+app.http('updateWebhookConfigAlt', {
+  methods: ['PUT', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'webhooks/configs/{id}',
+  handler: updateWebhookConfiguration
+});
+
+app.http('deleteWebhookConfigAlt', {
+  methods: ['DELETE', 'OPTIONS'],
+  authLevel: 'anonymous',
+  route: 'webhooks/configs/{id}',
+  handler: deleteWebhookConfiguration
+});
+
+// Secondary endpoints (may have routing conflicts)
 app.http('listWebhookConfigs', {
   methods: ['GET', 'OPTIONS'],
   authLevel: 'anonymous',
