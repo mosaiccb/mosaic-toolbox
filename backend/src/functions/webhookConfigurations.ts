@@ -555,39 +555,3 @@ app.http('deleteWebhookConfigAlt', {
   route: 'webhooks/configs/{id}',
   handler: deleteWebhookConfiguration
 });
-
-// Secondary endpoints (may have routing conflicts)
-app.http('listWebhookConfigs', {
-  methods: ['GET', 'OPTIONS'],
-  authLevel: 'anonymous',
-  route: 'webhooks/configurations',
-  handler: getWebhookConfigurations
-});
-
-app.http('getWebhookConfig', {
-  methods: ['GET', 'OPTIONS'],
-  authLevel: 'anonymous',
-  route: 'webhooks/configurations/{id}',
-  handler: getWebhookConfiguration
-});
-
-app.http('createWebhookConfig', {
-  methods: ['POST', 'OPTIONS'],
-  authLevel: 'anonymous',
-  route: 'webhooks/configurations',
-  handler: createWebhookConfiguration
-});
-
-app.http('updateWebhookConfig', {
-  methods: ['PUT', 'OPTIONS'],
-  authLevel: 'anonymous',
-  route: 'webhooks/configurations/{id}',
-  handler: updateWebhookConfiguration
-});
-
-app.http('deleteWebhookConfig', {
-  methods: ['DELETE', 'OPTIONS'],
-  authLevel: 'anonymous',
-  route: 'webhooks/configurations/{id}',
-  handler: deleteWebhookConfiguration
-});
