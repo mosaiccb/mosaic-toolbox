@@ -745,7 +745,7 @@ export class TenantDatabaseService {
    */
   private async auditTenantChange(tenantId: string, action: string, oldValues: string, newValues: string, changedBy: string): Promise<void> {
     const query = `
-      INSERT INTO [dbo].[TenantAudit] 
+      INSERT INTO [dbo].[UKGTenantAudit] 
         ([TenantId], [Action], [OldValues], [NewValues], [ChangedBy])
       VALUES 
         (@tenantId, @action, @oldValues, @newValues, @changedBy)
