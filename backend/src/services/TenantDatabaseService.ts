@@ -147,12 +147,15 @@ export class TenantDatabaseService {
   private pool: sql.ConnectionPool | null = null;
 
   constructor() {
-    // Initialize Azure credentials for Key Vault access
-    // Use system-assigned managed identity (no clientId needed) for Azure Function Apps
-    this.credential = new DefaultAzureCredential();
+    // Initialize Azure credentials for Key Vault access (match working PasswordDatabaseService pattern)
+    const clientId = process.env.AZURE_CLIENT_ID || '4663051e-32cf-49ed-9759-2ef91bbe9d73';
+    this.credential = new DefaultAzureCredential({
+      managedIdentityClientId: clientId
+    });
     
-    // Initialize Key Vault client for secrets
-    const keyVaultUrl = process.env.AZURE_KEY_VAULT_URL || process.env.AZURE_KEY_VAULT_ENDPOINT || 'https://mosaic-toolbox-kv.vault.azure.net/';
+    // Initialize Key Vault client for secrets (match working PasswordDatabaseService pattern)
+    const keyVaultName = process.env.KEY_VAULT_NAME || 'mosaic-toolbox-kv';
+    const keyVaultUrl = process.env.AZURE_KEY_VAULT_ENDPOINT || `https://${keyVaultName}.vault.azure.net/`;
     this.keyVaultClient = new SecretClient(keyVaultUrl, this.credential);
   }
 
@@ -608,7 +611,15 @@ export class TenantDatabaseService {
   async storeSftpPrivateKey(tenantId: string, configId: string, privateKey: string): Promise<void> {
     try {
       const secretName = `sftp-${configId}-privatekey`;
-      await this.keyVaultClient.setSecret(secretName, privateKey);
+      
+      // Set a timeout for the Key Vault operation (match working pattern)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Key Vault operation timed out after 15 seconds')), 15000);
+      });
+      
+      const secretPromise = this.keyVaultClient.setSecret(secretName, privateKey);
+      
+      await Promise.race([secretPromise, timeoutPromise]);
     } catch (error) {
       console.error(`Error storing SFTP private key for config ${configId}:`, error);
       throw error;
@@ -625,7 +636,15 @@ export class TenantDatabaseService {
   async storeSftpPassword(tenantId: string, configId: string, password: string): Promise<void> {
     try {
       const secretName = `sftp-${configId}-password`;
-      await this.keyVaultClient.setSecret(secretName, password);
+      
+      // Set a timeout for the Key Vault operation (match working pattern)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Key Vault operation timed out after 15 seconds')), 15000);
+      });
+      
+      const secretPromise = this.keyVaultClient.setSecret(secretName, password);
+      
+      await Promise.race([secretPromise, timeoutPromise]);
     } catch (error) {
       console.error(`Error storing SFTP password for config ${configId}:`, error);
       throw error;
@@ -691,7 +710,15 @@ export class TenantDatabaseService {
   async storeSharePointClientSecret(tenantId: string, configId: string, clientSecret: string): Promise<void> {
     try {
       const secretName = `sharepoint-${configId}-clientsecret`;
-      await this.keyVaultClient.setSecret(secretName, clientSecret);
+      
+      // Set a timeout for the Key Vault operation
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Key Vault operation timed out after 15 seconds')), 15000);
+      });
+      
+      const secretPromise = this.keyVaultClient.setSecret(secretName, clientSecret);
+      
+      await Promise.race([secretPromise, timeoutPromise]);
     } catch (error) {
       console.error(`Error storing SharePoint client secret for config ${configId}:`, error);
       throw error;
@@ -724,7 +751,14 @@ export class TenantDatabaseService {
    */
   async updateSharePointClientSecret(tenantId: string, secretName: string, clientSecret: string): Promise<void> {
     try {
-      await this.keyVaultClient.setSecret(secretName, clientSecret);
+      // Set a timeout for the Key Vault operation
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Key Vault operation timed out after 15 seconds')), 15000);
+      });
+      
+      const secretPromise = this.keyVaultClient.setSecret(secretName, clientSecret);
+      
+      await Promise.race([secretPromise, timeoutPromise]);
     } catch (error) {
       console.error(`Error updating SharePoint client secret ${secretName}:`, error);
       throw error;
@@ -739,7 +773,14 @@ export class TenantDatabaseService {
    */
   async storeSecret(secretName: string, secretValue: string): Promise<void> {
     try {
-      await this.keyVaultClient.setSecret(secretName, secretValue);
+      // Set a timeout for the Key Vault operation
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Key Vault operation timed out after 15 seconds')), 15000);
+      });
+      
+      const secretPromise = this.keyVaultClient.setSecret(secretName, secretValue);
+      
+      await Promise.race([secretPromise, timeoutPromise]);
     } catch (error) {
       console.error(`Error storing secret ${secretName}:`, error);
       throw error;
