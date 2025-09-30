@@ -411,6 +411,8 @@ export class TenantDatabaseService {
    */
   async createTenant(tenantData: CreateTenantRequest): Promise<string> {
     const tenantId = this.generateGuid();
+    
+    // Create database entries within transaction first
     const pool = await this.getConnectionPool();
     const transaction = new sql.Transaction(pool);
 
@@ -436,18 +438,20 @@ export class TenantDatabaseService {
 
       await tenantRequest.query(insertTenantQuery);
 
-      // UKG API configuration is now built dynamically from UKGTenants table
-      // No separate UKGApiConfigurations table needed
-
-      // Store client secret in Key Vault
-      await this.storeClientSecret(tenantId, tenantData.clientSecret);
-
       // Audit the creation
       await this.auditTenantChange(tenantId, 'CREATE', '', 
         `TenantName:${tenantData.tenantName}; CompanyId:${tenantData.companyId}; BaseUrl:${tenantData.baseUrl}`, 
         'system');
 
       await transaction.commit();
+
+      // Store client secret in Key Vault after successful database commit (async, no blocking)
+      // Don't await this to avoid timeouts - handle asynchronously
+      this.storeClientSecret(tenantId, tenantData.clientSecret).catch(error => {
+        console.error(`Warning: Failed to store client secret in Key Vault for tenant ${tenantId}:`, error);
+        // Note: Consider implementing a retry mechanism or notification system
+      });
+
       return tenantId;
 
     } catch (error) {
@@ -579,7 +583,15 @@ export class TenantDatabaseService {
   private async storeClientSecret(tenantId: string, clientSecret: string): Promise<void> {
     try {
       const secretName = `tenant-${tenantId}-client-secret`;
-      await this.keyVaultClient.setSecret(secretName, clientSecret);
+      
+      // Set a timeout for the Key Vault operation
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Key Vault operation timed out after 15 seconds')), 15000);
+      });
+      
+      const secretPromise = this.keyVaultClient.setSecret(secretName, clientSecret);
+      
+      await Promise.race([secretPromise, timeoutPromise]);
     } catch (error) {
       console.error(`Error storing client secret for tenant ${tenantId}:`, error);
       throw error;
